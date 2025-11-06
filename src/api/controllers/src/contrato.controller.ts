@@ -1,11 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
+// [CORREÇÃO] Importação ajustada para usar o barrel file de serviços.
 import {
   contratoService,
   ContratoService,
-} from '@/api/services/src/contrato.service';
-import { logger } from '@/config/logger';
+} from '@/api/services';
+// [NOTA] 'logger' importado mas não utilizado; pode ser removido.
+//import { logger } from '@/config/logger';
 
-// Tipos DTO dos nossos validadores Zod (que já criámos)
+// Tipos DTO dos nossos validadores Zod
 import {
   CreateContratoDto,
   UpdateContratoDto,
@@ -24,22 +26,25 @@ export class ContratoController {
 
   /**
    * Cria um Contrato a partir de uma PI.
-   * (Migração de controllers/contratoController.js -> createContrato)
    * Rota: POST /api/v1/contratos
    */
   async createContrato(
     req: Request<unknown, unknown, CreateContratoDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const dto = req.body;
 
-      const novoContrato = await this.service.create(dto, empresaId);
+      // [CORREÇÃO] Erro TS(2345): Convertido 'empresaId' para string.
+      const novoContrato = await this.service.create(dto, empresaId.toString());
 
-      // (Resposta 201)
-      res.status(201).json(novoContrato);
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(201).json({
+        status: 'success',
+        data: novoContrato,
+      });
     } catch (error) {
       // Passa erros (ex: 404 PI não encontrada, 409 Contrato já existe)
       next(error);
@@ -48,22 +53,25 @@ export class ContratoController {
 
   /**
    * Lista todos os Contratos (com paginação e filtros).
-   * (Migração de controllers/contratoController.js -> getAllContratos)
    * Rota: GET /api/v1/contratos
    */
   async getAllContratos(
     req: Request<unknown, unknown, unknown, ListContratosDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const dto = req.query; // DTO validado (filtros e paginação)
 
-      const result = await this.service.getAll(empresaId, dto);
+      // [CORREÇÃO] Erro TS(2345): Convertido 'empresaId' para string.
+      const result = await this.service.getAll(empresaId.toString(), dto);
 
-      // (Resposta 200)
-      res.status(200).json(result); // Retorna { data: [...], pagination: {...} }
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: result, // Retorna { data: [...], pagination: {...} }
+      });
     } catch (error) {
       next(error);
     }
@@ -71,22 +79,25 @@ export class ContratoController {
 
   /**
    * Busca um Contrato específico pelo ID.
-   * (Migração de controllers/contratoController.js -> getContratoById)
    * Rota: GET /api/v1/contratos/:id
    */
   async getContratoById(
     req: Request<MongoIdParam>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const { id } = req.params;
 
-      // O serviço retorna o documento Mongoose (que o Express serializa com .toJSON())
-      const contrato = await this.service.getById(id, empresaId);
+      // [CORREÇÃO] Erro TS(2345): Convertido 'empresaId' para string.
+      const contrato = await this.service.getById(id, empresaId.toString());
 
-      res.status(200).json(contrato);
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: contrato,
+      });
     } catch (error) {
       // Passa erro (ex: 404 Não Encontrado)
       next(error);
@@ -95,23 +106,30 @@ export class ContratoController {
 
   /**
    * Atualiza um Contrato (ex: status).
-   * (Migração de controllers/contratoController.js -> updateContrato)
    * Rota: PUT /api/v1/contratos/:id
    */
   async updateContrato(
     req: Request<MongoIdParam, unknown, UpdateContratoDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const { id } = req.params;
       const dto = req.body;
 
-      const contratoAtualizado = await this.service.update(id, dto, empresaId);
+      // [CORREÇÃO] Erro TS(2345): Convertido 'empresaId' para string.
+      const contratoAtualizado = await this.service.update(
+        id,
+        dto,
+        empresaId.toString(),
+      );
 
-      // (Resposta 200)
-      res.status(200).json(contratoAtualizado);
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: contratoAtualizado,
+      });
     } catch (error) {
       // Passa erros (ex: 404, 400 Validação de status)
       next(error);
@@ -120,21 +138,21 @@ export class ContratoController {
 
   /**
    * Deleta um Contrato.
-   * (Migração de controllers/contratoController.js -> deleteContrato)
    * Rota: DELETE /api/v1/contratos/:id
    */
   async deleteContrato(
     req: Request<MongoIdParam>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const { id } = req.params;
 
-      await this.service.delete(id, empresaId);
+      // [CORREÇÃO] Erro TS(2345): Convertido 'empresaId' para string.
+      await this.service.delete(id, empresaId.toString());
 
-      // (Resposta 204)
+      // (Resposta 204 é o padrão correto para DELETE sem conteúdo)
       res.status(204).send();
     } catch (error) {
       // Passa erros (ex: 404, 400 status não é rascunho)
@@ -144,20 +162,25 @@ export class ContratoController {
 
   /**
    * Gera e faz o download do PDF do Contrato.
-   * (Migração de controllers/contratoController.js -> downloadContrato_PDF)
    * Rota: GET /api/v1/contratos/:id/download
    */
   async downloadContrato_PDF(
     req: Request<MongoIdParam>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<void> { // [CORREÇÃO] O tipo de retorno é Promise<void>
     try {
       const { empresaId, id: userId } = req.user!; // Extrai userId
       const { id: contratoId } = req.params;
 
+      // [CORREÇÃO] Erro TS(2345): Convertido 'empresaId' e 'userId' para string.
       // O serviço de PDF irá fazer o streaming da resposta
-      await this.service.generatePDF(contratoId, empresaId, userId, res);
+      await this.service.generatePDF(
+        contratoId,
+        empresaId.toString(),
+        userId.toString(),
+        res,
+      );
     } catch (error) {
       // Se o erro ocorrer antes do streaming, o errorHandler pega
       next(error);

@@ -1,10 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
-import { placaService, PlacaService } from '@/api/services/src/placa.service';
+// Importação ajustada para usar o barrel file de serviços.
+import { placaService, PlacaService } from '@/api/services';
 import { logger } from '@/config/logger';
 
-// Tipos DTO dos nossos validadores Zod (que já criámos)
+// Tipos DTO dos nossos validadores Zod
 import {
-  CreatePlacaDto,
+  // [CORREÇÃO 7.1] Corrigido o nome do DTO de 'CreatePlacaDto' para 'PlacaBodyDto'
+  // para corresponder ao que é exportado pelo 'placa.validator.ts'.
+  PlacaBodyDto,
   UpdatePlacaDto,
   ListPlacasDto,
   CheckDisponibilidadeDto,
@@ -22,25 +25,38 @@ export class PlacaController {
 
   /**
    * Cria uma nova placa (com upload de imagem).
-   * (Migração de controllers/placaController.js -> createPlacaController)
    * Rota: POST /api/v1/placas
    */
   async createPlaca(
-    req: Request<unknown, unknown, CreatePlacaDto>,
+    // [CORREÇÃO 7.1] Tipo de DTO do body corrigido para 'PlacaBodyDto'.
+    req: Request<unknown, unknown, PlacaBodyDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const dto = req.body;
       const file = req.file; // Anexado pelo middleware 'upload'
 
-      logger.debug(`[PlacaController] Ficheiro recebido (create): ${file ? (file as any).key : 'Nenhum'}`);
+      // Removido 'any' do log. 'originalname' é uma prop padrão de Multer.
+      logger.debug(
+        `[PlacaController] Ficheiro recebido (create): ${
+          file ? file.originalname : 'Nenhum'
+        }`,
+      );
 
-      const novaPlaca = await this.service.createPlaca(dto, file, empresaId);
+      // Erro TS(2345): Convertido 'empresaId' para string.
+      const novaPlaca = await this.service.createPlaca(
+        dto,
+        file,
+        empresaId.toString(),
+      );
 
-      // (Resposta 201)
-      res.status(201).json(novaPlaca);
+      // Padronização da resposta (JSend) e retorno explícito.
+      return res.status(201).json({
+        status: 'success',
+        data: novaPlaca,
+      });
     } catch (error) {
       // Passa erros (ex: 404 Região, 409 Duplicado)
       next(error);
@@ -49,31 +65,39 @@ export class PlacaController {
 
   /**
    * Atualiza uma placa existente (com upload de imagem).
-   * (Migração de controllers/placaController.js -> updatePlacaController)
    * Rota: PUT /api/v1/placas/:id
    */
   async updatePlaca(
     req: Request<MongoIdParam, unknown, UpdatePlacaDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const { id } = req.params;
       const dto = req.body;
       const file = req.file; // Anexado pelo middleware 'upload'
 
-      logger.debug(`[PlacaController] Ficheiro recebido (update): ${file ? (file as any).key : 'Nenhum'}`);
-      
+      // Removido 'any' do log.
+      logger.debug(
+        `[PlacaController] Ficheiro recebido (update): ${
+          file ? file.originalname : 'Nenhum'
+        }`,
+      );
+
+      // Erro TS(2345): Convertido 'empresaId' para string.
       const placaAtualizada = await this.service.updatePlaca(
         id,
         dto,
         file,
-        empresaId,
+        empresaId.toString(),
       );
 
-      // (Resposta 200)
-      res.status(200).json(placaAtualizada);
+      // Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: placaAtualizada,
+      });
     } catch (error) {
       // Passa erros (ex: 404, 409 Duplicado)
       next(error);
@@ -82,22 +106,25 @@ export class PlacaController {
 
   /**
    * Busca todas as placas (com filtros, paginação).
-   * (Migração de controllers/placaController.js -> getAllPlacasController)
    * Rota: GET /api/v1/placas
    */
   async getAllPlacas(
     req: Request<unknown, unknown, unknown, ListPlacasDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const dto = req.query; // DTO validado pelo Zod
 
-      const result = await this.service.getAllPlacas(empresaId, dto);
+      // Erro TS(2345): Convertido 'empresaId' para string.
+      const result = await this.service.getAllPlacas(empresaId.toString(), dto);
 
-      // (Resposta 200)
-      res.status(200).json(result); // Retorna { data: [...], pagination: {...} }
+      // Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: result,
+      });
     } catch (error) {
       next(error);
     }
@@ -105,21 +132,25 @@ export class PlacaController {
 
   /**
    * Busca uma placa específica pelo ID.
-   * (Migração de controllers/placaController.js -> getPlacaByIdController)
    * Rota: GET /api/v1/placas/:id
    */
   async getPlacaById(
     req: Request<MongoIdParam>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const { id } = req.params;
 
-      const placa = await this.service.getPlacaById(id, empresaId);
+      // Erro TS(2345): Convertido 'empresaId' para string.
+      const placa = await this.service.getPlacaById(id, empresaId.toString());
 
-      res.status(200).json(placa);
+      // Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: placa,
+      });
     } catch (error) {
       // Passa erro (ex: 404 Não Encontrado)
       next(error);
@@ -128,21 +159,21 @@ export class PlacaController {
 
   /**
    * Apaga uma placa.
-   * (Migração de controllers/placaController.js -> deletePlacaController)
    * Rota: DELETE /api/v1/placas/:id
    */
   async deletePlaca(
     req: Request<MongoIdParam>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const { id } = req.params;
 
-      await this.service.deletePlaca(id, empresaId);
+      // Erro TS(2345): Convertido 'empresaId' para string.
+      await this.service.deletePlaca(id, empresaId.toString());
 
-      // (Resposta 204)
+      // (Resposta 204 é o padrão correto para DELETE sem conteúdo)
       res.status(204).send();
     } catch (error) {
       // Passa erros (ex: 409 Em uso, 404 Não Encontrado)
@@ -152,24 +183,28 @@ export class PlacaController {
 
   /**
    * Alterna a disponibilidade (manutenção).
-   * (Migração de controllers/placaController.js -> toggleDisponibilidadeController)
    * Rota: PATCH /api/v1/placas/:id/disponibilidade
    */
   async toggleDisponibilidade(
     req: Request<MongoIdParam>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const { id } = req.params;
 
+      // Erro TS(2345): Convertido 'empresaId' para string.
       const placaAtualizada = await this.service.toggleDisponibilidade(
         id,
-        empresaId,
+        empresaId.toString(),
       );
 
-      res.status(200).json(placaAtualizada);
+      // Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: placaAtualizada,
+      });
     } catch (error) {
       // Passa erros (ex: 409 Em uso, 404 Não Encontrado)
       next(error);
@@ -178,14 +213,25 @@ export class PlacaController {
 
   /**
    * Busca todas as localizações de placas (para o mapa).
-   * (Migração de controllers/placaController.js -> getPlacaLocationsController)
    * Rota: GET /api/v1/placas/locations
    */
-  async getPlacaLocations(req: Request, res: Response, next: NextFunction) {
+  async getPlacaLocations(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
-      const locations = await this.service.getAllPlacaLocations(empresaId);
-      res.status(200).json(locations);
+      // Erro TS(2345): Convertido 'empresaId' para string.
+      const locations = await this.service.getAllPlacaLocations(
+        empresaId.toString(),
+      );
+
+      // Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: locations,
+      });
     } catch (error) {
       next(error);
     }
@@ -193,23 +239,28 @@ export class PlacaController {
 
   /**
    * Busca placas disponíveis por período.
-   * (Migração de controllers/placaController.js -> getPlacasDisponiveisController)
    * Rota: GET /api/v1/placas/disponiveis
    */
   async getPlacasDisponiveis(
     req: Request<unknown, unknown, unknown, CheckDisponibilidadeDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const dto = req.query; // DTO validado pelo Zod (datas, regiao, search)
 
-      const placas = await this.service.getPlacasDisponiveis(empresaId, dto);
+      // Erro TS(2345): Convertido 'empresaId' para string.
+      const placas = await this.service.getPlacasDisponiveis(
+        empresaId.toString(),
+        dto,
+      );
 
-      // (Resposta 200)
-      // O JS original retorna { data: [...] }
-      res.status(200).json({ data: placas });
+      // Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: placas,
+      });
     } catch (error) {
       next(error);
     }

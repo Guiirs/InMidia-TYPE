@@ -18,7 +18,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 // [ALTERADO] Importa ZodSchema
-import { z, ZodError, ZodIssue, ZodSchema } from 'zod';
+import { ZodError, ZodIssue, ZodSchema } from 'zod';
 import { logger } from '@/config/logger';
 import { HttpError } from '@/utils/errors/httpError';
 

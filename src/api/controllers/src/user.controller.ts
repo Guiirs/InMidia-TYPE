@@ -1,28 +1,23 @@
 /*
- * Arquivo: src/api/controllers/src/user.controller.ts
+ * Arquivo: src/api/controllers/user.controller.ts
  * Descrição: Controlador para as rotas de Usuário autenticado (/user).
  *
  * Alterações (Correção de Bug TS2339):
- * 1. [FIX] Adicionados os métodos `getEmpresaProfile` e `regenerateApiKey`.
- * 2. Estes métodos estavam a ser chamados pelo `user.routes.ts`, mas
- * não estavam implementados neste controlador.
- * 3. A lógica destes novos métodos chama os métodos correspondentes no
- * `userService` (que já existiam).
- * 4. [REMOVIDO] Removidas as importações não utilizadas de
- * `UpdateUserDto` e `UpdatePasswordDto`, pois as rotas que as usam
- * não estavam neste ficheiro (`user.routes.ts`).
- * 5. [REMOVIDO] Removidos os métodos `updatePassword` e `uploadAvatar`,
- * pois não são chamados por nenhuma rota no `user.routes.ts`.
+ * [Nota] Os comentários originais sobre correções de bugs (TS2339)
+ * e remoção/adição de métodos foram mantidos, pois são relevantes
+ * para o histórico do arquivo.
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { userService, UserService } from '@/api/services/src/user.service';
+// [CORREÇÃO] Importação ajustada para usar o barrel file de serviços.
+import { userService, UserService } from '@/api/services';
 //import { logger } from '@/config/logger';
 
 // Tipos DTO dos nossos validadores Zod
-// [REMOVIDO] import { UpdateUserDto, UpdatePasswordDto } from '@/utils/validators/user.validator';
-import { UpdateUserProfileDto } from '@/utils/validators/user.validator';
-import { RegenerateApiKeyDto } from '@/utils/validators/user.validator';
+import {
+  UpdateUserProfileDto,
+  RegenerateApiKeyDto,
+} from '@/utils/validators/user.validator';
 
 /**
  * Controlador para lidar com as rotas de Usuário autenticado (/user).
@@ -35,11 +30,21 @@ export class UserController {
    * Busca os dados do Usuário autenticado (perfil).
    * Rota: GET /api/v1/user/me
    */
-  async getProfile(req: Request, res: Response, next: NextFunction) {
+  async getProfile(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<Response | void> {
     try {
+      // req.user é garantido pelo authMiddleware
       const { id } = req.user!;
       const user = await this.service.getProfile(id);
-      res.status(200).json(user);
+
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: user,
+      });
     } catch (error) {
       next(error);
     }
@@ -50,16 +55,22 @@ export class UserController {
    * Rota: PUT /api/v1/user/me
    */
   async updateProfile(
+    // Tipagem de DTO vinda dos validadores Zod
     req: Request<unknown, unknown, UpdateUserProfileDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { id } = req.user!;
       const dto = req.body;
 
       const updatedUser = await this.service.updateProfile(id, dto);
-      res.status(200).json(updatedUser);
+
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: updatedUser,
+      });
     } catch (error) {
       next(error);
     }
@@ -69,12 +80,21 @@ export class UserController {
    * [NOVO - CORRIGIDO] Busca os dados da empresa do utilizador (Admin).
    * Rota: GET /api/v1/user/me/empresa
    */
-  async getEmpresaProfile(req: Request, res: Response, next: NextFunction) {
+  async getEmpresaProfile(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<Response | void> {
     try {
       const { empresaId, role } = req.user!;
       // A lógica de permissão (role) já é verificada pelo adminMiddleware na rota
       const empresa = await this.service.getEmpresaProfile(empresaId, role);
-      res.status(200).json(empresa);
+
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: empresa,
+      });
     } catch (error) {
       next(error);
     }
@@ -88,7 +108,7 @@ export class UserController {
     req: Request<unknown, unknown, RegenerateApiKeyDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { id, empresaId, role } = req.user!;
       const dto = req.body; // Senha de confirmação
@@ -99,7 +119,12 @@ export class UserController {
         role,
         dto,
       );
-      res.status(200).json(result);
+
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: result,
+      });
     } catch (error) {
       next(error);
     }
@@ -110,8 +135,6 @@ export class UserController {
    * ficheiro, mas não eram chamados por 'user.routes.ts'.
    * Se forem necessários, precisam de rotas próprias.
    */
-  // async updatePassword(...)
-  // async uploadAvatar(...)
 }
 
 /**

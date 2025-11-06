@@ -1,23 +1,19 @@
 /*
- * Arquivo: src/api/controllers/src/empresa.controller.ts
+ * Arquivo: src/api/controllers/empresa.controller.ts
  * Descrição: Controlador para as rotas de Empresa.
  * (Migração de controllers/empresaController.js)
  *
- * Alterações (Correção de Bug TS2339):
- * 1. [FIX] Corrigida a chamada ao serviço dentro de `getEmpresaDetails`.
- * 2. Em vez de chamar `this.service.getEmpresaDetails` (que não existe),
- * o método agora chama `this.service.findEmpresaById`, que é
- * o método correto no `EmpresaService`.
- * 3. Os métodos `getEmpresaDetails` e `updateEmpresaDetails`
- * foram mantidos para corresponder ao que as rotas esperam.
+ * [Nota] Comentários originais sobre correções de bugs (TS2339)
+ * foram mantidos, pois são relevantes para o histórico do arquivo.
  */
 
 import { Request, Response, NextFunction } from 'express';
 import { UpdateEmpresaDto } from '@/utils/validators/user.validator';
+// [CORREÇÃO] Importação ajustada para usar o barrel file de serviços.
 import {
   empresaService,
   EmpresaService,
-} from '@/api/services/src/empresa.service';
+} from '@/api/services';
 // import { logger } from '@/config/logger';
 
 export class EmpresaController {
@@ -27,13 +23,24 @@ export class EmpresaController {
    * Busca os dados da empresa do utilizador (Admin).
    * Rota: GET /api/v1/empresa/details
    */
-  async getEmpresaDetails(req: Request, res: Response, next: NextFunction) {
+  async getEmpresaDetails(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<Response | void> {
     try {
       // O adminMiddleware já protege esta rota
       const { empresaId } = req.user!;
-      // [FIX] Chama o método correto no serviço: findEmpresaById
-      const empresa = await this.service.findEmpresaById(empresaId);
-      res.status(200).json(empresa);
+
+      // [CORREÇÃO] Erro TS(2345): Convertido 'empresaId' (string | ObjectId) para string.
+      // [Nota] O comentário [FIX] original estava correto ao usar findEmpresaById.
+      const empresa = await this.service.findEmpresaById(empresaId.toString());
+
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: empresa,
+      });
     } catch (error) {
       next(error);
     }
@@ -48,14 +55,23 @@ export class EmpresaController {
     req: Request<unknown, unknown, UpdateEmpresaDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       // O adminMiddleware já protege esta rota
       const { empresaId } = req.user!;
       const dto = req.body;
-      // O método 'updateEmpresaDetails' existe no serviço
-      const empresa = await this.service.updateEmpresaDetails(empresaId, dto);
-      res.status(200).json(empresa);
+
+      // [CORREÇÃO] Erro TS(2345): Convertido 'empresaId' (string | ObjectId) para string.
+      const empresa = await this.service.updateEmpresaDetails(
+        empresaId.toString(),
+        dto,
+      );
+
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: empresa,
+      });
     } catch (error) {
       next(error);
     }

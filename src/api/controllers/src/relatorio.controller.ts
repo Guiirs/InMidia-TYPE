@@ -1,11 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
+// [CORREÇÃO] Importação ajustada para usar o barrel file de serviços.
 import {
   relatorioService,
   RelatorioService,
-} from '@/api/services/src/relatorio.service';
-import { logger } from '@/config/logger';
+} from '@/api/services';
+// [NOTA] 'logger' importado mas não utilizado; pode ser removido.
+//import { logger } from '@/config/logger';
 
-// Tipos DTO dos nossos validadores Zod (que já criámos)
+// Tipos DTO dos nossos validadores Zod
 import { OcupacaoPorPeriodoDto } from '@/utils/validators/relatorio.validator';
 
 /**
@@ -17,14 +19,23 @@ export class RelatorioController {
 
   /**
    * Obtém placas por região (para o Dashboard).
-   * (Migração de controllers/relatorioController.js -> getPlacasPorRegiao)
    * Rota: GET /api/v1/relatorios/placas-por-regiao
    */
-  async getPlacasPorRegiao(req: Request, res: Response, next: NextFunction) {
+  async getPlacasPorRegiao(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
-      const data = await this.service.placasPorRegiao(empresaId);
-      res.status(200).json(data);
+      // [CORREÇÃO] Erro TS(2345): Convertido 'empresaId' para string.
+      const data = await this.service.placasPorRegiao(empresaId.toString());
+
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: data,
+      });
     } catch (error) {
       next(error);
     }
@@ -32,14 +43,25 @@ export class RelatorioController {
 
   /**
    * Gera o resumo do dashboard (Cards).
-   * (Migração de controllers/relatorioController.js -> getDashboardSummary)
    * Rota: GET /api/v1/relatorios/dashboard-summary
    */
-  async getDashboardSummary(req: Request, res: Response, next: NextFunction) {
+  async getDashboardSummary(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
-      const summary = await this.service.getDashboardSummary(empresaId);
-      res.status(200).json(summary);
+      // [CORREÇÃO] Erro TS(2345): Convertido 'empresaId' para string.
+      const summary = await this.service.getDashboardSummary(
+        empresaId.toString(),
+      );
+
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: summary,
+      });
     } catch (error) {
       next(error);
     }
@@ -47,20 +69,28 @@ export class RelatorioController {
 
   /**
    * Obtém a percentagem de ocupação por período (Retorna JSON).
-   * (Migração de controllers/relatorioController.js -> getOcupacaoPorPeriodo)
    * Rota: GET /api/v1/relatorios/ocupacao-por-periodo
    */
   async getOcupacaoPorPeriodo(
     req: Request<unknown, unknown, unknown, OcupacaoPorPeriodoDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const dto = req.query; // DTO validado pelo Zod (data_inicio, data_fim)
 
-      const reportData = await this.service.ocupacaoPorPeriodo(empresaId, dto);
-      res.status(200).json(reportData);
+      // [CORREÇÃO] Erro TS(2345): Convertido 'empresaId' para string.
+      const reportData = await this.service.ocupacaoPorPeriodo(
+        empresaId.toString(),
+        dto,
+      );
+
+      // [CORREÇÃO] Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: reportData,
+      });
     } catch (error) {
       next(error);
     }
@@ -68,20 +98,23 @@ export class RelatorioController {
 
   /**
    * Gera e exporta o relatório de ocupação como PDF.
-   * (Migração de controllers/relatorioController.js -> exportOcupacaoPdf)
    * Rota: GET /api/v1/relatorios/export/ocupacao-por-periodo
    */
   async exportOcupacaoPdf(
     req: Request<unknown, unknown, unknown, OcupacaoPorPeriodoDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<void> { // [CORREÇÃO] O tipo de retorno é Promise<void>
     try {
       const { empresaId } = req.user!;
       const dto = req.query;
 
+      // [CORREÇÃO] Erro TS(2345): Convertido 'empresaId' para string.
       // 1. Obtém os dados (mesma lógica do endpoint JSON)
-      const reportData = await this.service.ocupacaoPorPeriodo(empresaId, dto);
+      const reportData = await this.service.ocupacaoPorPeriodo(
+        empresaId.toString(),
+        dto,
+      );
 
       // 2. Passa os dados e o 'res' para o serviço de PDF
       // O serviço de PDF irá fazer o streaming da resposta

@@ -27,7 +27,7 @@ import {
   comparePassword, // [NOVO] Importado para validação da API Key
   hashPassword,
   signJwt,
-} from '@/security/middlewares/src/index';
+} from '@/security/index';
 import { LoginDto, RegisterEmpresaDto } from '@/utils/validators/auth.validator';
 import { IEmpresa } from '@/db/models/empresa.model'; // [NOVO] Importado para o tipo de retorno
 

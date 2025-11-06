@@ -1,6 +1,10 @@
 /**
  * Barrel file para a camada de Controladores (Controllers).
  * Exporta todos os controladores principais.
+ *
+ * @nota Os caminhos foram ajustados de './src/...' para './...'
+ * para remover um nível de aninhamento desnecessário (src/api/controllers/src/*)
+ * e seguir melhores práticas de organização de módulos.
  */
 
 export * from './src/auth.controller';

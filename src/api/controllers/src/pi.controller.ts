@@ -1,10 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
-import { piService, PiService } from '@/api/services/src/pi.service';
-import { logger } from '@/config/logger';
+// Importação ajustada para usar o barrel file de serviços.
+import { piService, PiService } from '@/api/services';
+// 'logger' removido pois não estava sendo utilizado.
 
-// Tipos DTO dos nossos validadores Zod (que já criámos)
+// Tipos DTO dos nossos validadores Zod
 import {
-  CreatePiDto,
+  // [CORREÇÃO 10.1] Corrigido o nome do DTO de 'CreatePiDto' para 'PiBodyDto'
+  // para corresponder ao que é exportado pelo 'pi.validator.ts' (Erro TS2305).
+  PiBodyDto,
   UpdatePiDto,
   ListPisDto,
 } from '@/utils/validators/pi.validator';
@@ -21,24 +24,26 @@ export class PiController {
 
   /**
    * Cria uma nova PI.
-   * (Migração de controllers/piController.js -> createPI)
    * Rota: POST /api/v1/pis
    */
   async createPI(
-    req: Request<unknown, unknown, CreatePiDto>,
+    // [CORREÇÃO 10.1] Tipo de DTO do body corrigido para 'PiBodyDto'.
+    req: Request<unknown, unknown, PiBodyDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const dto = req.body; // DTO validado
 
-      // (A lógica de { ...req.body, cliente: req.body.clienteId }
-      // é tratada pelo serviço TS)
-      const novaPI = await this.service.create(dto, empresaId);
+      // Erro TS(2345): Convertido 'empresaId' para string.
+      const novaPI = await this.service.create(dto, empresaId.toString());
 
-      // (Resposta 201)
-      res.status(201).json(novaPI);
+      // Padronização da resposta (JSend) e retorno explícito.
+      return res.status(201).json({
+        status: 'success',
+        data: novaPI,
+      });
     } catch (error) {
       // Passa erros (ex: 404 Cliente não encontrado)
       next(error);
@@ -47,20 +52,25 @@ export class PiController {
 
   /**
    * Lista todas as PIs (com filtros e paginação).
-   * (Migração de controllers/piController.js -> getAllPIs)
    * Rota: GET /api/v1/pis
    */
   async getAllPIs(
     req: Request<unknown, unknown, unknown, ListPisDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const dto = req.query; // DTO validado
 
-      const result = await this.service.getAll(empresaId, dto);
-      res.status(200).json(result); // Retorna { data: [...], pagination: {...} }
+      // Erro TS(2345): Convertido 'empresaId' para string.
+      const result = await this.service.getAll(empresaId.toString(), dto);
+
+      // Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: result, // Retorna { data: [...], pagination: {...} }
+      });
     } catch (error) {
       next(error);
     }
@@ -68,20 +78,25 @@ export class PiController {
 
   /**
    * Busca uma PI específica pelo ID.
-   * (Migração de controllers/piController.js -> getPIById)
    * Rota: GET /api/v1/pis/:id
    */
   async getPIById(
     req: Request<MongoIdParam>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const { id } = req.params;
 
-      const pi = await this.service.getById(id, empresaId);
-      res.status(200).json(pi);
+      // Erro TS(2345): Convertido 'empresaId' para string.
+      const pi = await this.service.getById(id, empresaId.toString());
+
+      // Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: pi,
+      });
     } catch (error) {
       // Passa erro (ex: 404 PI Não Encontrada)
       next(error);
@@ -90,21 +105,30 @@ export class PiController {
 
   /**
    * Atualiza uma PI.
-   * (Migração de controllers/piController.js -> updatePI)
    * Rota: PUT /api/v1/pis/:id
    */
   async updatePI(
     req: Request<MongoIdParam, unknown, UpdatePiDto>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const { id } = req.params;
       const dto = req.body;
 
-      const piAtualizada = await this.service.update(id, dto, empresaId);
-      res.status(200).json(piAtualizada);
+      // Erro TS(2345): Convertido 'empresaId' para string.
+      const piAtualizada = await this.service.update(
+        id,
+        dto,
+        empresaId.toString(),
+      );
+
+      // Padronização da resposta (JSend) e retorno explícito.
+      return res.status(200).json({
+        status: 'success',
+        data: piAtualizada,
+      });
     } catch (error) {
       // Passa erros (ex: 404)
       next(error);
@@ -113,21 +137,21 @@ export class PiController {
 
   /**
    * Deleta uma PI.
-   * (Migração de controllers/piController.js -> deletePI)
    * Rota: DELETE /api/v1/pis/:id
    */
   async deletePI(
     req: Request<MongoIdParam>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<Response | void> {
     try {
       const { empresaId } = req.user!;
       const { id } = req.params;
 
-      await this.service.delete(id, empresaId);
+      // Erro TS(2345): Convertido 'empresaId' para string.
+      await this.service.delete(id, empresaId.toString());
 
-      // (Resposta 204)
+      // (Resposta 204 é o padrão correto para DELETE sem conteúdo)
       res.status(204).send();
     } catch (error) {
       // Passa erros (ex: 404)
@@ -137,22 +161,25 @@ export class PiController {
 
   /**
    * Gera e faz o download do PDF da PI.
-   * (Migração de controllers/piController.js -> downloadPI_PDF)
    * Rota: GET /api/v1/pis/:id/download
    */
   async downloadPI_PDF(
     req: Request<MongoIdParam>,
     res: Response,
     next: NextFunction,
-  ) {
+  ): Promise<void> {
     try {
       const { empresaId, id: userId } = req.user!;
       const { id: piId } = req.params;
 
-      // O serviço de PDF irá fazer o streaming da resposta
-      await this.service.generatePDF(piId, empresaId, userId, res);
+      // Erro TS(2345): Convertido 'empresaId' e 'userId' para string.
+      await this.service.generatePDF(
+        piId,
+        empresaId.toString(),
+        userId.toString(),
+        res,
+      );
     } catch (error) {
-      // Se o erro ocorrer antes do streaming, o errorHandler pega
       next(error);
     }
   }
