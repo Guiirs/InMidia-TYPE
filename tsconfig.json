@@ -11,12 +11,12 @@
     "strictNullChecks": true,
     "strictFunctionTypes": true,
     "strictBindCallApply": true,
-    "strictPropertyInitialization": false, // Mongoose models podem ser difíceis com isso
+    "strictPropertyInitialization": false,
     "noImplicitThis": true,
     "useUnknownInCatchVariables": true,
     "alwaysStrict": true,
     "noUnusedLocals": true,
-    "noUnusedParameters": false, // Permite parâmetros não usados (ex: 'next' em middlewares)
+    "noUnusedParameters": false,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "resolveJsonModule": true,
@@ -28,8 +28,15 @@
     },
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "sourceMap": true
+    "sourceMap": true,
+
+    // ✅ Adicionado: garante que o TS procure tipos personalizados
+ "typeRoots": ["./node_modules/@types", "./src/@types"]
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/@types/**/*.d.ts",
+    "tests/**/*.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

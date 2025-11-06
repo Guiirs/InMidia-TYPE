@@ -1,12 +1,28 @@
+/*
+ * Arquivo: src/api/controllers/src/user.controller.ts
+ * Descrição: Controlador para as rotas de Usuário autenticado (/user).
+ *
+ * Alterações (Correção de Bug TS2339):
+ * 1. [FIX] Adicionados os métodos `getEmpresaProfile` e `regenerateApiKey`.
+ * 2. Estes métodos estavam a ser chamados pelo `user.routes.ts`, mas
+ * não estavam implementados neste controlador.
+ * 3. A lógica destes novos métodos chama os métodos correspondentes no
+ * `userService` (que já existiam).
+ * 4. [REMOVIDO] Removidas as importações não utilizadas de
+ * `UpdateUserDto` e `UpdatePasswordDto`, pois as rotas que as usam
+ * não estavam neste ficheiro (`user.routes.ts`).
+ * 5. [REMOVIDO] Removidos os métodos `updatePassword` e `uploadAvatar`,
+ * pois não são chamados por nenhuma rota no `user.routes.ts`.
+ */
+
 import { Request, Response, NextFunction } from 'express';
 import { userService, UserService } from '@/api/services/src/user.service';
-import { logger } from '@/config/logger';
+//import { logger } from '@/config/logger';
 
-// Tipos DTO dos nossos validadores Zod (que já criámos)
-import {
-  UpdateUserDto,
-  UpdatePasswordDto,
-} from '@/utils/validators/user.validator';
+// Tipos DTO dos nossos validadores Zod
+// [REMOVIDO] import { UpdateUserDto, UpdatePasswordDto } from '@/utils/validators/user.validator';
+import { UpdateUserProfileDto } from '@/utils/validators/user.validator';
+import { RegenerateApiKeyDto } from '@/utils/validators/user.validator';
 
 /**
  * Controlador para lidar com as rotas de Usuário autenticado (/user).
@@ -17,18 +33,12 @@ export class UserController {
 
   /**
    * Busca os dados do Usuário autenticado (perfil).
-   * (Migração de controllers/userController.js -> getProfile)
-   * Rota: GET /api/v1/user/profile
+   * Rota: GET /api/v1/user/me
    */
   async getProfile(req: Request, res: Response, next: NextFunction) {
     try {
-      // O ID do usuário vem do JWT (req.user!)
       const { id } = req.user!;
-
-      // Busca o perfil (inclui Empresa e Regiões)
       const user = await this.service.getProfile(id);
-
-      // (Resposta 200)
       res.status(200).json(user);
     } catch (error) {
       next(error);
@@ -37,21 +47,18 @@ export class UserController {
 
   /**
    * Atualiza os dados do Usuário autenticado (excluindo password).
-   * (Migração de controllers/userController.js -> updateProfile)
-   * Rota: PUT /api/v1/user/profile
+   * Rota: PUT /api/v1/user/me
    */
   async updateProfile(
-    req: Request<unknown, unknown, UpdateUserDto>,
+    req: Request<unknown, unknown, UpdateUserProfileDto>,
     res: Response,
     next: NextFunction,
   ) {
     try {
-      const { id } = req.user!; // ID do usuário autenticado
-      const dto = req.body; // DTO validado
+      const { id } = req.user!;
+      const dto = req.body;
 
       const updatedUser = await this.service.updateProfile(id, dto);
-
-      // (Resposta 200)
       res.status(200).json(updatedUser);
     } catch (error) {
       next(error);
@@ -59,58 +66,52 @@ export class UserController {
   }
 
   /**
-   * Atualiza a password do Usuário autenticado.
-   * (Migração de controllers/userController.js -> updatePassword)
-   * Rota: PUT /api/v1/user/password
+   * [NOVO - CORRIGIDO] Busca os dados da empresa do utilizador (Admin).
+   * Rota: GET /api/v1/user/me/empresa
    */
-  async updatePassword(
-    req: Request<unknown, unknown, UpdatePasswordDto>,
+  async getEmpresaProfile(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { empresaId, role } = req.user!;
+      // A lógica de permissão (role) já é verificada pelo adminMiddleware na rota
+      const empresa = await this.service.getEmpresaProfile(empresaId, role);
+      res.status(200).json(empresa);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * [NOVO - CORRIGIDO] Regenera a API Key da empresa (Admin).
+   * Rota: POST /api/v1/user/me/empresa/regenerate-api-key
+   */
+  async regenerateApiKey(
+    req: Request<unknown, unknown, RegenerateApiKeyDto>,
     res: Response,
     next: NextFunction,
   ) {
     try {
-      const { id } = req.user!; // ID do usuário autenticado
-      const { oldPassword, newPassword } = req.body; // DTO validado
+      const { id, empresaId, role } = req.user!;
+      const dto = req.body; // Senha de confirmação
 
-      await this.service.updatePassword(id, oldPassword, newPassword);
-
-      // (Resposta 204)
-      res.status(204).send();
+      const result = await this.service.regenerateApiKey(
+        id,
+        empresaId,
+        role,
+        dto,
+      );
+      res.status(200).json(result);
     } catch (error) {
-      // Passa erro (ex: 400 password antiga incorreta)
       next(error);
     }
   }
 
-  /**
-   * Faz o upload do avatar do Usuário autenticado.
-   * (Migração de controllers/userController.js -> uploadAvatar)
-   * Rota: POST /api/v1/user/avatar
+  /*
+   * [REMOVIDO] Os métodos updatePassword e uploadAvatar estavam neste
+   * ficheiro, mas não eram chamados por 'user.routes.ts'.
+   * Se forem necessários, precisam de rotas próprias.
    */
-  async uploadAvatar(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { id } = req.user!; // ID do usuário autenticado
-
-      // O middleware de upload (Multer) anexa o ficheiro a req.file
-      if (!req.file) {
-        logger.error('Nenhum arquivo de avatar fornecido para o usuário: %s', id);
-        // Em vez de retornar um erro específico de ficheiro aqui, confiaremos no Zod
-        // ou no uploadMiddleware para lidar com isso, mas para manter a funcionalidade
-        // original, lançaremos um erro padrão.
-        throw new Error('Nenhum ficheiro de avatar fornecido.');
-      }
-
-      const filePath = req.file.path;
-
-      // O serviço fará o processamento da imagem e atualização da URL
-      const updatedUser = await this.service.uploadAvatar(id, filePath);
-
-      // (Resposta 200)
-      res.status(200).json(updatedUser);
-    } catch (error) {
-      next(error);
-    }
-  }
+  // async updatePassword(...)
+  // async uploadAvatar(...)
 }
 
 /**

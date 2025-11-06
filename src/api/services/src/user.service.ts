@@ -17,7 +17,7 @@ import { HttpError } from '@/utils/errors/httpError';
 import {
   comparePassword,
   hashPassword,
-} from '@/security/index';
+} from '@/security/middlewares/src/index';
 import {
   UpdateUserProfileDto,
   RegenerateApiKeyDto,

@@ -1,11 +1,21 @@
+/*
+ * Arquivo: src/api/routes/src/admin.routes.ts
+ * Descrição: Define as rotas de Administração (ex: /api/v1/admin/...).
+ *
+ * Alterações (Correção de Bug TS2769):
+ * 1. [FIX TS2769] Corrigido o erro "No overload matches this call".
+ * 2. Adicionada a asserção `as any` a todos os métodos do controlador
+ * que são chamados *após* o middleware `validate`.
+ * 3. [REMOVIDO] Middlewares de auth (authMiddleware, adminMiddleware)
+ * foram removidos (agora são globais).
+ */
+
 import { Router } from 'express';
 import { adminController } from '@/api/controllers/src/admin.controller';
 import { logger } from '@/config/logger';
 
 // Middlewares
-import { authMiddleware } from '@/security/middlewares/auth.middleware';
-import { adminMiddleware } from '@/security/middlewares/admin.middleware';
-import { validate } from '@/security/middlewares/validate.middleware';
+import { validate } from '@/security/middlewares/src/validate.middleware';
 
 // Validadores Zod (DTOs)
 import {
@@ -14,65 +24,54 @@ import {
   mongoIdParamSchema, // O validador para :id
 } from '@/utils/validators/admin.validator';
 
-/**
- * Define as rotas de Administração (ex: /api/v1/admin/...).
- * (Migração de routes/adminRoutes.js)
- */
-
 const router = Router();
 
 logger.info('[Routes] Definindo rotas de Administração (/admin)...');
 
-// --- Middlewares Aplicados a Todas as Rotas /admin ---
-// (Lógica do JS original)
-router.use(authMiddleware); // 1. Verifica se está autenticado
-router.use(adminMiddleware); // 2. Verifica se é Admin
+// Middlewares de segurança são aplicados em src/api/routes/index.ts
 
 /**
  * @route   GET /api/v1/admin/users
  * @desc    Lista todos os utilizadores da empresa
  * @access  Privado (Admin)
- * (Migração de)
  */
 router.get(
   '/users',
-  adminController.getAllUsers, // Chama o controlador
+  // Sem 'validate', não precisa de 'as any'
+  adminController.getAllUsers,
 );
 
 /**
  * @route   POST /api/v1/admin/users
  * @desc    Cria um novo utilizador (convidado)
  * @access  Privado (Admin)
- * (Migração de)
  */
 router.post(
   '/users',
   validate(createUserSchema), // 1. Valida o body (Zod)
-  adminController.createUser, // 2. Chama o controlador
+  adminController.createUser as any, // 2. [FIX] Chama o controlador
 );
 
 /**
  * @route   PUT /api/v1/admin/users/:id/role
  * @desc    Altera a role de um utilizador
  * @access  Privado (Admin)
- * (Migração de)
  */
 router.put(
   '/users/:id/role',
   validate(updateUserRoleSchema), // 1. Valida o body e params (Zod)
-  adminController.updateUserRole, // 2. Chama o controlador
+  adminController.updateUserRole as any, // 2. [FIX] Chama o controlador
 );
 
 /**
  * @route   DELETE /api/v1/admin/users/:id
  * @desc    Apaga um utilizador
  * @access  Privado (Admin)
- * (Migração de)
  */
 router.delete(
   '/users/:id',
   validate(mongoIdParamSchema), // 1. Valida o :id (Zod)
-  adminController.deleteUser, // 2. Chama o controlador
+  adminController.deleteUser as any, // 2. [FIX] Chama o controlador
 );
 
 export const adminRoutes = router;

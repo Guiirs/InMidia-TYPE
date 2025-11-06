@@ -1,6 +1,18 @@
+/*
+ * Arquivo: src/utils/errors/httpError.ts
+ * Descrição: Classe de erro customizada para erros operacionais (HTTP).
+ * (Baseado no AppError.js original)
+ *
+ * Alterações:
+ * 1. [Confirmação] Este ficheiro está robusto e correto.
+ * 2. A classe estende `Error` corretamente, define `isOperational` e
+ * captura o stack trace, o que é crucial para o `errorHandler` global.
+ * 3. A propriedade opcional `validationErrors` está corretamente
+ * definida para ser usada pelo `validate.middleware.ts`.
+ */
+
 /**
  * Classe de erro customizada para erros operacionais (HTTP).
- * (Baseado no AppError.js original)
  *
  * Esta classe estende o Error nativo e adiciona informações de status HTTP
  * e um marcador 'isOperational' para o errorHandler global.
@@ -11,8 +23,7 @@ export class HttpError extends Error {
   public readonly isOperational: boolean;
 
   /**
-   * (Opcional) Usado para transportar erros de validação (Zod/express-validator)
-   * (Baseado no authValidator.js e errorHandler.js originais)
+   * (Opcional) Usado para transportar erros de validação (Zod)
    */
   public validationErrors?: Record<string, string>;
 

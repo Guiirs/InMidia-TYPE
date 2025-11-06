@@ -1,106 +1,123 @@
+/*
+ * Arquivo: src/utils/validators/placa.validator.ts
+ * Descrição: Schemas de validação (Zod) para as rotas de Placa.
+ *
+ * Alterações (Melhoria de Robustez):
+ * 1. [FIX] Removido o campo `imagem: z.string().optional()` dos schemas
+ * `placaBodySchema` e `updatePlacaSchema` (body).
+ * 2. Motivo: As rotas de placa usam `upload.single('imagem')` (Multer),
+ * o que significa que a 'imagem' vem em `req.file`, e não em `req.body`.
+ * O Zod (que valida `req.body`) não deve validar este campo.
+ * O controlador é responsável por extrair a 'imagem' de `req.file`.
+ * 3. [Boas Práticas] O schema `checkDisponibilidadeSchema` usa `.refine()`
+ * para garantir que `data_fim` é posterior a `data_inicio`,
+ * o que é uma excelente prática.
+ * 4. [Clean Code] Adicionadas as exportações de tipos (DTOs)
+ * para consistência e para serem usadas pelos controladores/serviços.
+ */
+
 import { z } from 'zod';
-import { mongoIdParamSchema } from './admin.validator'; // Reutilizando o validador de MongoID
+import { mongoIdSchema } from './admin.validator'; // Reutiliza o validador de ID
 
-// Validador de MongoID
-const mongoId = (message: string) =>
-  z.string().refine((val) => /^[0-9a-fAF]{24}$/.test(val), {
-    message,
-  });
-
-// --- Esquema de Criação/Atualização (POST /placas, PUT /placas/:id) ---
-// (Migração de 'placaValidationRules' em placaValidator.js)
-// Nota: O Multer (upload) não é validado pelo Zod; validamos os campos de texto.
+/**
+ * Schema para POST /api/v1/placas (Criação)
+ */
 export const placaBodySchema = z.object({
   body: z.object({
-    numero_placa: z
-      .string({ required_error: 'O número da placa é obrigatório.' })
-      .trim()
-      .min(1, 'O número da placa é obrigatório.')
-      .max(50, 'Número da placa muito longo (máx 50 caracteres).'),
-
-    regiao: mongoId('O ID da região é obrigatório e deve ser um MongoID.'),
-
-    coordenadas: z
-      .string()
-      .trim()
-      .matches(/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/, {
-        message: 'Formato de coordenadas inválido (ex: -3.12, -38.45).',
-      })
-      .max(100, 'Coordenadas muito longas (máx 100 caracteres).')
-      .optional()
-      .or(z.literal('')), // Permite string vazia
-
-    nomeDaRua: z
-      .string()
-      .trim()
-      .max(255, 'Nome da rua muito longo (máx 255 caracteres).')
-      .optional()
-      .or(z.literal('')),
-
-    tamanho: z
-      .string()
-      .trim()
-      .max(50, 'Tamanho muito longo (máx 50 caracteres).')
-      .optional()
-      .or(z.literal('')),
-
-    // No PUT, 'disponivel' pode ser enviado
-    disponivel: z.coerce.boolean().optional(),
+    nome: z
+      .string({ required_error: 'O nome (identificador) é obrigatório.' })
+      .min(1, 'O nome é obrigatório.'),
+    regiaoId: mongoIdSchema,
+    latitude: z.coerce.number({
+      required_error: 'A latitude é obrigatória.',
+      invalid_type_error: 'A latitude deve ser um número.',
+    }),
+    longitude: z.coerce.number({
+      required_error: 'A longitude é obrigatória.',
+      invalid_type_error: 'A longitude deve ser um número.',
+    }),
+    // [REMOVIDO] imagem: z.string().optional(), (Vem de req.file, não req.body)
   }),
 });
 
-// Esquema para o PUT (combina ID e Body)
+/**
+ * Schema para PUT /api/v1/placas/:id (Atualização)
+ */
 export const updatePlacaSchema = z.object({
-  params: mongoIdParamSchema.shape.params,
-  body: placaBodySchema.shape.body,
+  params: z.object({
+    id: mongoIdSchema,
+  }),
+  // No body, todos os campos são opcionais
+  body: z
+    .object({
+      nome: z.string().min(1, 'O nome é obrigatório.'),
+      regiaoId: mongoIdSchema,
+      latitude: z.coerce.number({
+        invalid_type_error: 'A latitude deve ser um número.',
+      }),
+      longitude: z.coerce.number({
+        invalid_type_error: 'A longitude deve ser um número.',
+      }),
+      // [REMOVIDO] imagem: z.string().optional(), (Vem de req.file, não req.body)
+    })
+    .partial() // Torna todos os campos opcionais
+    .refine(
+      (data) => Object.keys(data).length > 0,
+      'O corpo da requisição não pode estar vazio. Pelo menos um campo deve ser fornecido para atualização.',
+    ),
 });
 
-// Tipos inferidos do Zod
-export type CreatePlacaDto = z.infer<typeof placaBodySchema>['body'];
-export type UpdatePlacaDto = z.infer<typeof updatePlacaSchema>['body'];
-
-// --- Esquema de Listagem (GET /api/v1/placas) ---
-// (Migração dos query params em swaggerConfig.js)
+/**
+ * Schema para GET /api/v1/placas (Listagem com paginação e filtros)
+ */
 export const listPlacasSchema = z.object({
   query: z.object({
-    page: z.coerce.number().int().min(1).default(1).optional(),
-    limit: z.coerce.number().int().min(1).max(100).default(10).optional(),
-    sortBy: z
-      .enum(['numero_placa', 'nomeDaRua', 'createdAt'])
-      .default('createdAt')
-      .optional(),
-    order: z.enum(['asc', 'desc']).default('desc').optional(),
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().default(10),
     search: z.string().optional(),
-    regiao_id: z
-      .string()
-      .optional()
-      .refine((val) => val === 'todas' || /^[0-9a-fA-F]{24}$/.test(val ?? ''), {
-        message: 'O ID da região deve ser um MongoID válido ou "todas".',
-      }),
-    disponivel: z.enum(['true', 'false']).transform(v => v === 'true').optional(),
+    regiaoId: mongoIdSchema.optional(),
   }),
 });
 
-// Tipo inferido do Zod
+/**
+ * Schema para GET /api/v1/placas/disponiveis (Check de disponibilidade)
+ */
+export const checkDisponibilidadeSchema = z
+  .object({
+    query: z.object({
+      data_inicio: z
+        .string({ required_error: 'A data de início é obrigatória.' })
+        .datetime({
+          message: 'A data de início deve estar no formato ISO 8601.',
+        }),
+      data_fim: z
+        .string({ required_error: 'A data de fim é obrigatória.' })
+        .datetime({
+          message: 'A data de fim deve estar no formato ISO 8601.',
+        }),
+      // Filtros opcionais
+      regiaoId: mongoIdSchema.optional(),
+      clienteId: mongoIdSchema.optional(),
+    }),
+  })
+  // Validação cruzada
+  .refine(
+    (data) => {
+      const inicio = new Date(data.query.data_inicio);
+      const fim = new Date(data.query.data_fim);
+      return fim > inicio;
+    },
+    {
+      message: 'A data de fim deve ser posterior à data de início.',
+      path: ['query', 'data_fim'], // Onde o erro deve ser reportado
+    },
+  );
+
+// --- Exportação de Tipos (DTOs) ---
+// (Agora corretos, sem o campo 'imagem')
+export type PlacaBodyDto = z.infer<typeof placaBodySchema>['body'];
+export type UpdatePlacaDto = z.infer<typeof updatePlacaSchema>['body'];
 export type ListPlacasDto = z.infer<typeof listPlacasSchema>['query'];
-
-// --- Esquema de Disponibilidade (GET /api/v1/placas/disponiveis) ---
-// (Baseado nos parâmetros do serviço 'getPlacasDisponiveis')
-export const checkDisponibilidadeSchema = z.object({
-  query: z.object({
-    dataInicio: z
-      .string({ required_error: 'dataInicio é obrigatória.' })
-      .datetime({ message: 'dataInicio deve ser uma data ISO 8601.' }),
-    dataFim: z
-      .string({ required_error: 'dataFim é obrigatória.' })
-      .datetime({ message: 'dataFim deve ser uma data ISO 8601.' }),
-    regiao: mongoId('O ID da região deve ser um MongoID válido.').optional(),
-    search: z.string().optional(),
-  }).refine((data) => new Date(data.dataFim) > new Date(data.dataInicio), {
-      message: "A data de fim deve ser posterior à data de início.",
-      path: ["dataFim"], // Onde o erro será reportado
-  }),
-});
-
-// Tipo inferido do Zod
-export type CheckDisponibilidadeDto = z.infer<typeof checkDisponibilidadeSchema>['query'];
+export type CheckDisponibilidadeDto = z.infer<
+  typeof checkDisponibilidadeSchema
+>['query'];

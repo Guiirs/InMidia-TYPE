@@ -1,11 +1,28 @@
+/*
+ * Arquivo: src/api/routes/src/user.routes.ts
+ * Descrição: Define as rotas do Utilizador autenticado (ex: /api/v1/user/...).
+ * (Migração de routes/user.js)
+ *
+ * Alterações (Melhoria de Robustez):
+ * 1. [REMOVIDO] Removida a importação de `authMiddleware`.
+ * 2. [REMOVIDO] Removido o `router.use(authMiddleware)`.
+ * 3. [MANTIDO] O `adminMiddleware` é mantido e aplicado *localmente*
+ * às rotas que exigem permissão de Admin.
+ *
+ * Motivo: A autenticação (JWT) já é aplicada globalmente a este
+ * grupo de rotas (`/v1/user`) no ficheiro `src/api/routes/index.ts`.
+ * A autorização (Admin) é necessária apenas para sub-rotas específicas.
+ */
+
 import { Router } from 'express';
+// [CORRIGIDO] Importa o controlador corrigido
 import { userController } from '@/api/controllers/src/user.controller';
 import { logger } from '@/config/logger';
 
 // Middlewares
-import { authMiddleware } from '@/security/middlewares/auth.middleware';
-import { adminMiddleware } from '@/security/middlewares/admin.middleware';
-import { validate } from '@/security/middlewares/validate.middleware';
+// [REMOVIDO] import { authMiddleware } from '@/security/middlewares/auth.middleware';
+import { adminMiddleware } from '@/security/middlewares/src/admin.middleware'; // [MANTIDO]
+import { validate } from '@/security/middlewares/src/validate.middleware';
 
 // Validadores Zod (DTOs)
 import {
@@ -13,24 +30,18 @@ import {
   regenerateApiKeySchema,
 } from '@/utils/validators/user.validator';
 
-/**
- * Define as rotas do Utilizador autenticado (ex: /api/v1/user/...).
- * (Migração de routes/user.js)
- */
-
 const router = Router();
 
 logger.info('[Routes] Definindo rotas de Utilizador (/user)...');
 
 // --- Middleware de Autenticação ---
-// Aplica a todas as rotas deste ficheiro (lógica do JS)
-router.use(authMiddleware);
+// [REMOVIDO] router.use(authMiddleware);
+// (A autenticação JWT é aplicada globalmente em src/api/routes/index.ts)
 
 /**
  * @route   GET /api/v1/user/me
  * @desc    Perfil do Utilizador
  * @access  Privado (Utilizador autenticado)
- * (Migração de)
  */
 router.get(
   '/me',
@@ -41,7 +52,6 @@ router.get(
  * @route   PUT /api/v1/user/me
  * @desc    Atualiza Perfil do Utilizador
  * @access  Privado (Utilizador autenticado)
- * (Migração de)
  */
 router.put(
   '/me',
@@ -53,11 +63,11 @@ router.put(
  * @route   GET /api/v1/user/me/empresa
  * @desc    Perfil da Empresa (Apenas Admin)
  * @access  Privado (Admin)
- * (Migração de)
  */
 router.get(
   '/me/empresa',
-  adminMiddleware, // 1. Garante que é Admin
+  adminMiddleware, // 1. Garante que é Admin [MANTIDO]
+  // [CORRIGIDO] Este método agora existe no userController
   userController.getEmpresaProfile, // 2. Chama o controlador
 );
 
@@ -65,12 +75,12 @@ router.get(
  * @route   POST /api/v1/user/me/empresa/regenerate-api-key
  * @desc    Regenera API Key (Apenas Admin)
  * @access  Privado (Admin)
- * (Migração de)
  */
 router.post(
   '/me/empresa/regenerate-api-key',
-  adminMiddleware, // 1. Garante que é Admin
+  adminMiddleware, // 1. Garante que é Admin [MANTIDO]
   validate(regenerateApiKeySchema), // 2. Valida o body (Zod)
+  // [CORRIGIDO] Este método agora existe no userController
   userController.regenerateApiKey, // 3. Chama o controlador
 );
 

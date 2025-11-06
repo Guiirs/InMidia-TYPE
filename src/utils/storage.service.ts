@@ -1,157 +1,170 @@
-import {
-  S3Client,
-  DeleteObjectCommand,
-  PutObjectCommand,
-} from '@aws-sdk/client-s3';
-import { Readable } from 'stream';
-import fs from 'fs';
+/*
+ * Arquivo: src/utils/storage.service.ts
+ * Descrição:
+ * Serviço para interagir com o S3/R2 para gestão de ficheiros (get URL, delete).
+ *
+ * Alterações (Melhoria de Robustez e Arquitetura):
+ * 1. [Arquitetura] O ficheiro foi refatorado para uma *classe* (StorageService)
+ * para encapsular o S3Client e a lógica de inicialização.
+ * 2. [Robustez] A inicialização do S3Client agora ocorre no 'constructor'.
+ * 3. [Robustez/Fail Fast] O 'constructor' agora lança um erro fatal
+ * (e impede a aplicação de iniciar) se as variáveis de R2/S3
+ * não estiverem configuradas em ambiente de *produção* (config.isProduction).
+ * Isto é o mesmo comportamento que implementámos no 'upload.middleware.ts'.
+ * 4. [Robustez] Os métodos 'getFileUrl' e 'deleteFile' agora verificam
+ * ativamente se 'this.s3Client' foi inicializado, lançando um
+ * HttpError 500 (Internal Server Error) se o serviço for chamado
+ * sem a configuração R2.
+ * 5. [Robustez] Os métodos agora tratam inputs nulos/undefined (ex: um
+ * cliente que não tem 'logoUrl') de forma segura, sem tentar
+ * apagar um ficheiro "undefined".
+ * 6. [Clean Code] Exportada uma instância 'singleton' (storageService)
+ * para ser usada por outros serviços.
+ */
+
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { config } from '@/config/index';
 import { logger } from '@/config/logger';
 import { HttpError } from './errors/httpError';
 
-/**
- * Lógica de Failsafe (se o R2/S3 não estiver configurado)
- * (Baseado no uploadMiddleware.js original)
- */
-let s3Client: S3Client | null = null;
-let isR2ConfigComplete = false;
+export class StorageService {
+  private s3Client: S3Client | null = null;
+  private readonly folderName: string;
+  private readonly publicUrl: string;
+  private readonly bucketName: string;
 
-if (
-  config.R2_ENDPOINT &&
-  config.R2_ACCESS_KEY_ID &&
-  config.R2_SECRET_ACCESS_KEY &&
-  config.RS_BUCKET_NAME
-) {
-  isR2ConfigComplete = true;
-  s3Client = new S3Client({
-    endpoint: config.R2_ENDPOINT,
-    region: 'auto', // R2 requer 'auto'
-    credentials: {
-      accessKeyId: config.R2_ACCESS_KEY_ID,
-      secretAccessKey: config.R2_SECRET_ACCESS_KEY,
-    },
-  });
-  logger.info('[StorageService] Cliente S3/R2 configurado com sucesso.');
-} else {
-  logger.warn(
-    '[StorageService] Variáveis de ambiente R2/S3 incompletas. O serviço de storage não funcionará.',
-  );
+  constructor() {
+    this.folderName = config.R2_FOLDER_NAME;
+    this.publicUrl = config.R2_PUBLIC_URL || ''; // Default para string vazia
+    this.bucketName = config.R2_BUCKET_NAME || '';
+
+    const isR2ConfigComplete =
+      config.R2_ENDPOINT &&
+      config.R2_ACCESS_KEY_ID &&
+      config.R2_SECRET_ACCESS_KEY &&
+      config.R2_BUCKET_NAME;
+
+    if (isR2ConfigComplete) {
+      try {
+        this.s3Client = new S3Client({
+          endpoint: config.R2_ENDPOINT,
+          region: 'auto', // R2 requer 'auto'
+          credentials: {
+            accessKeyId: config.R2_ACCESS_KEY_ID!,
+            secretAccessKey: config.R2_SECRET_ACCESS_KEY!,
+          },
+        });
+        logger.info('[StorageService] S3Client (R2) inicializado com sucesso.');
+      } catch (error) {
+        logger.error(error, '[StorageService] ERRO CRÍTICO ao inicializar S3Client.');
+        if (config.isProduction) {
+          throw new Error(`Falha ao inicializar o S3Client: ${(error as Error).message}`);
+        }
+      }
+    } else {
+      // [Fail Fast] Se estiver em produção, falha o boot
+      if (config.isProduction) {
+        logger.error(
+          '[StorageService] ERRO CRÍTICO: Variáveis de ambiente R2/S3 (R2_ENDPOINT, R2_ACCESS_KEY_ID, etc.) não estão configuradas.',
+        );
+        throw new Error(
+          'CONFIGURAÇÃO DE STORAGE R2/S3 OBRIGATÓRIA EM PRODUÇÃO',
+        );
+      } else {
+        // Em dev, apenas avisa que o serviço não funcionará
+        logger.error(
+          '[StorageService] ERRO CRÍTICO: R2 não configurado. O serviço de storage não funcionará (retornará URLs vazias e não apagará ficheiros).',
+        );
+      }
+    }
+  }
+
+  /**
+   * Monta a URL pública completa para um ficheiro.
+   * @param filename - O nome do ficheiro (ex: 'imagem.jpg')
+   * @returns A URL pública completa, ou uma string vazia se a configuração
+   * estiver em falta ou o nome do ficheiro for nulo.
+   */
+  public getFileUrl(filename: string | null | undefined): string {
+    // 1. Não retorna nada se o nome do ficheiro for nulo
+    if (!filename) {
+      return '';
+    }
+
+    // 2. Não retorna nada se a URL pública não estiver configurada
+    if (!this.publicUrl) {
+      if (config.isProduction) {
+        // Em produção, isto não deve acontecer (devido ao config.ts)
+        logger.error(
+          '[StorageService] R2_PUBLIC_URL não está definida. Não é possível gerar URL.',
+        );
+      }
+      return ''; // Retorna string vazia
+    }
+
+    // 3. Constrói a URL
+    return `${this.publicUrl}/${this.folderName}/${filename}`;
+  }
+
+  /**
+   * Monta a 'key' (path + filename) do ficheiro no S3.
+   * @param filename - O nome do ficheiro (ex: 'imagem.jpg')
+   * @returns A key (ex: 'inmidia-uploads-sistema/imagem.jpg')
+   */
+  private getFileKey(filename: string): string {
+    return `${this.folderName}/${filename}`;
+  }
+
+  /**
+   * Apaga um ficheiro do R2/S3.
+   * @param filename - O nome do ficheiro a ser apagado.
+   */
+  public async deleteFile(filename: string | null | undefined): Promise<void> {
+    // 1. Não faz nada se o nome do ficheiro for nulo/undefined/vazio
+    if (!filename) {
+      return;
+    }
+
+    // 2. [Robustez] Verifica se o cliente S3 foi inicializado
+    if (!this.s3Client) {
+      logger.error(
+        `[StorageService] Tentativa de apagar '${filename}' falhou: S3 Client (R2) não está configurado.`,
+      );
+      // Lança um erro interno. A aplicação não deve tentar apagar
+      // ficheiros se o storage não estiver configurado.
+      throw new HttpError(
+        'Erro interno do servidor: O serviço de storage não está configurado.',
+        500,
+      );
+    }
+
+    const fileKey = this.getFileKey(filename);
+    const deleteParams = {
+      Bucket: this.bucketName,
+      Key: fileKey,
+    };
+
+    try {
+      const command = new DeleteObjectCommand(deleteParams);
+      await this.s3Client.send(command);
+      logger.info(`[StorageService] Ficheiro apagado com sucesso: ${fileKey}`);
+    } catch (err) {
+      logger.error(
+        err,
+        `[StorageService] Erro ao apagar o ficheiro '${fileKey}' do R2/S3.`,
+      );
+      // Lança um erro operacional para que o serviço chamador (ex: ClienteService)
+      // possa tratá-lo e enviar uma resposta de erro 500 ao utilizador.
+      throw new HttpError(
+        'Erro interno ao tentar apagar o ficheiro anterior.',
+        500,
+      );
+    }
+  }
 }
 
 /**
- * Gera a Key completa (caminho) do arquivo no R2/S3.
- * @param filename - O nome do arquivo (ex: 'imagem.jpg' ou 'backup.gz')
- * @param type - O tipo de upload (pasta)
+ * Instância padrão (singleton) do StorageService.
+ * Outros serviços (ClienteService, PlacaService) devem importar esta instância.
  */
-const getFileKey = (
-  filename: string,
-  type: 'placa' | 'cliente_logo' | 'backup',
-): string => {
-  const baseFolder = config.R2_FOLDER_NAME; // 'inmidia-uploads-sistema'
-
-  switch (type) {
-    case 'backup':
-      // (Baseado no backupJob.js)
-      return `inmidia-db-backups/${filename}`;
-    case 'cliente_logo':
-      // (Baseado no clienteService.js)
-      return `${baseFolder}/${filename}`;
-    case 'placa':
-    default:
-      // (Baseado no placaService.js)
-      return `${baseFolder}/${filename}`;
-  }
-};
-
-/**
- * Apaga um ficheiro do bucket R2/S3.
- * (Migração de deleteFileFromR2 em uploadMiddleware.js)
- *
- * @param filename - O nome do *arquivo* (ex: imagem-123.png)
- * @param type - O tipo (para encontrar a pasta correta)
- */
-const deleteFileFromR2 = async (
-  filename: string,
-  type: 'placa' | 'cliente_logo',
-) => {
-  if (!s3Client || !isR2ConfigComplete) {
-    logger.error(
-      '[StorageService] Tentativa de apagar ficheiro falhou: Cliente R2 não configurado.',
-    );
-    throw new HttpError('Serviço de armazenamento (R2) não inicializado.', 500);
-  }
-  if (!filename) {
-    logger.warn('[StorageService] Tentativa de apagar ficheiro com nome vazio.');
-    return;
-  }
-
-  const fileKey = getFileKey(filename, type);
-
-  const command = new DeleteObjectCommand({
-    Bucket: config.R2_BUCKET_NAME,
-    Key: fileKey,
-  });
-
-  try {
-    logger.info(`[StorageService] Tentando apagar ficheiro do R2: ${fileKey}`);
-    await s3Client.send(command);
-    logger.info(`[StorageService] Ficheiro ${fileKey} apagado com sucesso do R2.`);
-  } catch (error) {
-    logger.error(
-      error,
-      `[StorageService] Erro ao apagar ficheiro ${fileKey} do R2:`,
-    );
-    // Não lançamos erro fatal, pois a falha em apagar um arquivo antigo
-    // não deve travar a atualização da placa (lógica do JS original).
-  }
-};
-
-/**
- * Faz upload de um arquivo local (stream ou path) para o R2/S3.
- * (Migração de uploadFileToR2 em uploadMiddleware.js)
- *
- * @param source - Caminho do arquivo local (string) ou um Stream
- * @param targetFilename - Nome do arquivo no R2
- * @param type - O tipo (pasta)
- */
-const uploadFileToR2 = async (
-  source: string | Readable,
-  targetFilename: string,
-  type: 'backup',
-) => {
-  if (!s3Client || !isR2ConfigComplete) {
-    logger.error(
-      '[StorageService] Tentativa de upload falhou: Cliente R2 não configurado.',
-    );
-    throw new HttpError('Serviço de armazenamento (R2) não inicializado.', 500);
-  }
-
-  const fileKey = getFileKey(targetFilename, type);
-  const body =
-    typeof source === 'string' ? fs.createReadStream(source) : source;
-
-  const command = new PutObjectCommand({
-    Bucket: config.R2_BUCKET_NAME,
-    Key: fileKey,
-    Body: body,
-    // (Poderíamos adicionar ContentType se soubéssemos, ex: 'application/gzip')
-  });
-
-  try {
-    logger.info(`[StorageService] Iniciando upload para R2 key: ${fileKey}`);
-    await s3Client.send(command);
-    logger.info(`[StorageService] Upload de ${fileKey} concluído.`);
-  } catch (error) {
-    logger.error(error, `[StorageService] Erro ao fazer upload do ${fileKey}:`);
-    throw error; // Lança o erro, pois o backup falhou
-  }
-};
-
-/**
- * Exportamos um serviço singleton (objeto) com os métodos.
- */
-export const storageService = {
-  deleteFileFromR2,
-  uploadFileToR2,
-  getFileKey,
-};
+export const storageService = new StorageService();

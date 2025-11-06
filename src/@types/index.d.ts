@@ -1,32 +1,42 @@
+/*
+ * Arquivo: src/types/index.d.ts
+ * Descrição:
+ * Define tipos globais para a aplicação, incluindo extensões
+ * para o objeto Request do Express e declarações "shim" para
+ * módulos sem tipos.
+ */
+
 /**
  * Importa a interface do payload que definimos no nosso utilitário JWT.
  */
 import { IJwtPayload } from '@/security/auth/jwt';
 
 /**
+ * [FIX TS7016] Adiciona uma declaração "shim" para o módulo 'rate-limit-mongo'.
+ * Esta linha informa ao TypeScript que o módulo existe, mesmo sem tipos.
+ */
+declare module 'rate-limit-mongo';
+
+/**
  * Extensão do namespace 'Express' global.
- * Isto adiciona a propriedade 'user' ao objeto Request do Express,
- * permitindo o acesso tipado a `req.user` em todos os middlewares
- * e controladores subsequentes.
+ * Adiciona propriedades customizadas ao objeto Request.
  */
 declare global {
   namespace Express {
     export interface Request {
       /**
        * O payload do JWT decodificado, anexado pelo 'authMiddleware'.
-       * Contém informações essenciais sobre o utilizador autenticado.
        */
       user?: IJwtPayload;
 
       /**
-       * (Opcional - Adicionado para o apiKeyAuthMiddleware.js)
+       * (Adicionado para o apiKeyAuthMiddleware)
        * Anexa a empresa encontrada durante a autenticação da API Key.
-       * Usamos 'any' por agora, mas idealmente seria 'IEmpresaDocument'.
        */
       empresa?: any;
 
       /**
-       * (Opcional - Adicionado para o uploadMiddleware.js)
+       * (Adicionado para o uploadMiddleware)
        * O Multer anexa o ficheiro aqui.
        */
       file?: Express.Multer.File;

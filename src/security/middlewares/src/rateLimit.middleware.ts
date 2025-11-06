@@ -1,25 +1,23 @@
 /*
  * Arquivo: src/security/middlewares/rateLimit.middleware.ts
  * Descrição:
- * Define os middlewares de limitação de taxa (rate limiting) para proteger
- * a API contra ataques de força bruta ou abuso.
- * (Baseado na lógica de routes/auth.js e nas melhores práticas)
+ * Define os middlewares de limitação de taxa (rate limiting).
  *
- * Alterações:
- * 1. [Clean Code] O arquivo original já estava bem estruturado.
- * 2. [Tipagem] A tipagem inferida pela biblioteca `express-rate-limit`
- * para os parâmetros do `handler` (req, res, next, options) é robusta
- * e foi mantida.
- * 3. [Boas Práticas] O uso de `standardHeaders: 'draft-7'` e
- * `legacyHeaders: false` está correto e alinhado com os padrões modernos da IETF.
- * 4. [Boas Práticas] O `handler` de log customizado é uma excelente prática
- * para monitorizar tentativas de abuso da API.
+ * Alterações (Melhoria de Escalabilidade #4):
+ * 1. [NOVO] Importado `MongoStore` da biblioteca `rate-limit-mongo`.
+ * 2. [NOVO] Importado o objeto `config` para aceder à MONGODB_URI.
+ * 3. [ALTERADO] A função `createRateLimiter` agora inclui a opção `store`.
+ * 4. [Escalabilidade] O middleware agora usa o MongoDB como um store
+ * persistente e partilhado. Isto garante que o rate limit funcione
+ * corretamente mesmo num ambiente com balanceamento de carga (cluster)
+ * com múltiplas instâncias do servidor.
  */
 
 import { rateLimit } from 'express-rate-limit';
 //import { Request, Response, NextFunction } from 'express';
 import { logger } from '@/config/logger';
-
+import { config } from '@/config/index'; // [NOVO] Importa a configuração
+import MongoStore from 'rate-limit-mongo';
 /**
  * Cria uma instância de middleware de rate limiting com configurações personalizadas.
  *
@@ -34,6 +32,13 @@ export const createRateLimiter = (
   message: string,
 ) => {
   return rateLimit({
+    // [NOVO] Configura o store persistente no MongoDB
+    store: new MongoStore({
+      uri: config.MONGODB_URI,
+      // Pode adicionar outras opções, ex: collectionName: 'rate-limit-logs'
+      // Por agora, usamos o padrão.
+    }),
+
     windowMs,
     max,
     message: { message }, // Padroniza a resposta de erro

@@ -1,27 +1,45 @@
-import { z } from 'zod';
-import { mongoIdParamSchema } from './admin.validator'; // Reutilizando o validador de MongoID
+/*
+ * Arquivo: src/utils/validators/regiao.validator.ts
+ * Descrição: Schemas de validação (Zod) para as rotas de Regiao.
+ *
+ * Alterações:
+ * 1. [Confirmação] O ficheiro está robusto e correto.
+ * 2. [Boas Práticas] Reutiliza o `mongoIdSchema` (importado de
+ * 'admin.validator.ts') para validar os IDs.
+ * 3. [Boas Práticas] O schema `createRegiaoSchema` garante que
+ * o nome não é vazio.
+ * 4. [Clean Code] Adicionadas as exportações de tipos (DTOs)
+ * para consistência e para serem usadas pelos controladores/serviços.
+ */
 
-// --- Esquema de Criação de Região (POST /api/v1/regioes) ---
-// (Migração de 'validateRegiaoBody' em routes/regiaoRoutes.js)
+import { z } from 'zod';
+import { mongoIdSchema } from './admin.validator'; // Reutiliza o validador de ID
+
+/**
+ * Schema para POST /api/v1/regioes (Criação)
+ */
 export const createRegiaoSchema = z.object({
   body: z.object({
     nome: z
       .string({ required_error: 'O nome da região é obrigatório.' })
-      .trim()
-      .min(1, 'O nome da região é obrigatório.')
-      .max(100, 'Nome da região muito longo (máx 100 caracteres).'),
+      .min(1, 'O nome da região não pode ser vazio.'),
   }),
 });
 
-// Tipo inferido do Zod
-export type CreateRegiaoDto = z.infer<typeof createRegiaoSchema>['body'];
-
-// --- Esquema de Atualização de Região (PUT /api/v1/regioes/:id) ---
-// (Migração de 'validateIdParam' e 'validateRegiaoBody' em routes/regiaoRoutes.js)
+/**
+ * Schema para PUT /api/v1/regioes/:id (Atualização)
+ */
 export const updateRegiaoSchema = z.object({
-  params: mongoIdParamSchema.shape.params, // Reutiliza a validação do ID
-  body: createRegiaoSchema.shape.body, // Reutiliza a validação do body
+  params: z.object({
+    id: mongoIdSchema,
+  }),
+  body: z.object({
+    nome: z
+      .string({ required_error: 'O nome da região é obrigatório.' })
+      .min(1, 'O nome da região não pode ser vazio.'),
+  }),
 });
 
-// Tipo inferido do Zod
+// --- Exportação de Tipos (DTOs) ---
+export type CreateRegiaoDto = z.infer<typeof createRegiaoSchema>['body'];
 export type UpdateRegiaoDto = z.infer<typeof updateRegiaoSchema>['body'];

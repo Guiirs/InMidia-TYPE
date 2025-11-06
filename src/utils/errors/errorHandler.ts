@@ -1,13 +1,26 @@
+/*
+ * Arquivo: src/utils/errors/errorHandler.ts
+ * Descrição: Middleware Global de Tratamento de Erros.
+ *
+ * Alterações (Correção de Bug TS2783):
+ * 1. [FIX] Corrigida a chamada `logger.error` para resolver o erro TS2783.
+ * 2. Em vez de fazer o "spread" (`...err`) do objeto de erro e
+ * copiar as suas propriedades (o que causa a duplicação do 'message'),
+ * agora passamos o objeto `err` diretamente para o logger (Pino).
+ * 3. O Pino é otimizado para serializar objetos de erro, garantindo
+ * que o 'stack', 'message', 'name' e outras propriedades (como
+ * 'validationErrors') sejam logados corretamente, sem conflitos.
+ */
+
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
-import { JsonWebTokenError, TokenExpiredError } from 'jsonwebtoken';
+//import { JsonWebTokenError, TokenExpiredError } from 'jsonwebtoken';
 import { config } from '@/config/index';
 import { logger } from '@/config/logger';
 import { HttpError } from './httpError';
 
 /**
  * Converte erros de Cast (ID inválido) do Mongoose em um HttpError operacional.
- * (Baseado em middlewares/errorHandler.js)
  */
 const handleCastErrorDB = (err: mongoose.Error.CastError): HttpError => {
   const message = `Recurso inválido. ${err.path}: ${err.value}.`;
@@ -16,7 +29,6 @@ const handleCastErrorDB = (err: mongoose.Error.CastError): HttpError => {
 
 /**
  * Converte erros de chave duplicada (11000) do Mongoose em um HttpError.
- * (Baseado em middlewares/errorHandler.js)
  */
 const handleDuplicateFieldsDB = (err: any): HttpError => {
   const field = Object.keys(err.keyValue)[0];
@@ -27,7 +39,6 @@ const handleDuplicateFieldsDB = (err: any): HttpError => {
 
 /**
  * Converte erros de validação do Mongoose em um HttpError.
- * (Baseado em middlewares/errorHandler.js)
  */
 const handleValidationErrorDB = (
   err: mongoose.Error.ValidationError,
@@ -78,9 +89,6 @@ const sendErrorProd = (err: HttpError, res: Response) => {
   }
   // B) Erro de programação ou desconhecido: Não vaza detalhes
   else {
-    // 1. Loga o erro (o logger principal já logou, mas podemos reforçar)
-    logger.error(err, 'ERRO NÃO OPERACIONAL (PRODUÇÃO)');
-
     // 2. Envia resposta genérica
     res.status(500).json({
       status: 'error',
@@ -101,11 +109,31 @@ export const errorHandler = (
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   next: NextFunction,
 ) => {
-  // Log centralizado (replicando o log do errorHandler.js original)
+  // Garante que o status code exista
   const statusCode = (err as HttpError).statusCode || 500;
+
+  // [FIX] Melhora a deteção de IP (considerando proxies)
+  const ip =
+    req.headers['x-forwarded-for']?.toString().split(',')[0] ||
+    req.socket?.remoteAddress ||
+    req.ip;
+
+  // [ALTERADO] Log centralizado e estruturado (Pino)
+  // Corrigido para resolver o erro TS2783 ('message' overwritten)
   logger.error(
-    `${statusCode} - ${err.message} - ${req.originalUrl} - ${req.method} - IP: ${req.ip}`,
-    { stack: err.stack },
+    {
+      // [FIX] Passa o objeto 'err' diretamente. O Pino sabe
+      // serializar (stack, message, name, etc.)
+      err,
+      // Contexto da requisição
+      req: {
+        url: req.originalUrl,
+        method: req.method,
+        ip: ip,
+      },
+      statusCode: statusCode,
+    },
+    `[ErrorHandler] ${err.message}`, // Mensagem de sumário
   );
 
   let error = err;

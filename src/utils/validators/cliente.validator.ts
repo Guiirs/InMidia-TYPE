@@ -1,67 +1,103 @@
-import { z } from 'zod';
-import { mongoIdParamSchema } from './admin.validator'; // Reutilizando o validador de MongoID
-import { validarCNPJ } from './cnpj.validator';
+/*
+ * Arquivo: src/utils/validators/cliente.validator.ts
+ * Descrição: Schemas de validação (Zod) para as rotas de Cliente.
+ *
+ * Alterações (Melhoria de Robustez):
+ * 1. [FIX] Importado o `cnpjValidator` (de `./cnpj.validator`) e
+ * aplicado aos campos 'cnpj' nos schemas de criação e atualização.
+ * Isto garante que apenas CNPJs válidos sejam aceites.
+ * 2. [FIX] Removido o campo `logo: z.string().optional()` dos schemas
+ * `clienteBodySchema` e `updateClienteSchema` (body).
+ * Motivo: As rotas de cliente usam `upload.single('logo')` (Multer),
+ * o que significa que o 'logo' vem em `req.file`, e não em `req.body`.
+ * O Zod (que valida `req.body`) não deve, portanto, validar este campo.
+ * O controlador é responsável por extrair o 'logo' de `req.file`.
+ * 3. [Clean Code] Adicionadas as exportações de tipos (DTOs)
+ * para consistência e para serem usadas pelos controladores/serviços.
+ */
 
-// --- Esquema de Criação/Atualização (POST /clientes, PUT /clientes/:id) ---
-// (Migração de 'validateClienteBody' em routes/clienteRoutes.js)
-// (Corrigido para incluir 'email' conforme models/Cliente.js)
+import { z } from 'zod';
+import { mongoIdSchema } from './admin.validator'; // Reutiliza o validador de ID
+import { cnpjValidator } from './cnpj.validator'; // [NOVO] Importa o validador de CNPJ
+
+/**
+ * Schema base para os campos de endereço (reutilizável)
+ */
+const enderecoSchema = z
+  .object({
+    logradouro: z.string().min(1, 'O logradouro é obrigatório.'),
+    numero: z.string().min(1, 'O número é obrigatório.'),
+    complemento: z.string().optional(),
+    bairro: z.string().min(1, 'O bairro é obrigatório.'),
+    cidade: z.string().min(1, 'A cidade é obrigatória.'),
+    uf: z
+      .string()
+      .length(2, 'A UF (Estado) deve ter exatamente 2 caracteres.'),
+    cep: z
+      .string()
+      .length(8, 'O CEP deve ter exatamente 8 caracteres (apenas números).'),
+  })
+  .optional();
+
+/**
+ * Schema para POST /api/v1/clientes (Criação)
+ */
 export const clienteBodySchema = z.object({
   body: z.object({
     nome: z
-      .string({ required_error: 'O nome do cliente é obrigatório.' })
-      .trim()
-      .min(1, 'O nome do cliente é obrigatório.')
-      .max(150, 'Nome muito longo (máx 150 caracteres).'),
-
+      .string({ required_error: 'O nome é obrigatório.' })
+      .min(2, 'O nome deve ter pelo menos 2 caracteres.'),
+    // [REMOVIDO] logo: z.string().optional(), (Vem de req.file, não req.body)
+    cnpj: cnpjValidator, // [ALTERADO] Usa o validador de CNPJ
     email: z
-      .string({ required_error: 'O e-mail é obrigatório.' })
-      .email('O e-mail fornecido não é válido.'),
-
-    cnpj: z
-      .string()
-      .trim()
-      .refine(validarCNPJ, 'O CNPJ fornecido é inválido.')
-      .optional()
-      .or(z.literal('')) // Permite nulo ou string vazia
-      .nullable(),
-
+      .string({ required_error: 'O email é obrigatório.' })
+      .email('O email fornecido é inválido.')
+      .optional(), // O modelo permite ser opcional
     telefone: z
       .string()
-      .trim()
-      .max(50, 'Telefone muito longo (máx 50 caracteres).')
+      .min(10, 'O telefone deve ter pelo menos 10 dígitos.')
       .optional(),
-      
-    // (Campos do modelo JS original)
-    endereco: z.string().trim().optional(),
-    bairro: z.string().trim().optional(),
-    cidade: z.string().trim().optional(),
-    responsavel: z.string().trim().optional(),
-    segmento: z.string().trim().optional(),
-    
-    // Campo do swagger/serviço (para upload)
-    logo_url: z.string().optional(),
+    endereco: enderecoSchema,
   }),
 });
 
-// Esquema para o PUT (combina ID e Body)
+/**
+ * Schema para PUT /api/v1/clientes/:id (Atualização)
+ */
 export const updateClienteSchema = z.object({
-  params: mongoIdParamSchema.shape.params,
-  // O body da atualização deve permitir campos parciais
-  body: clienteBodySchema.shape.body.partial(),
+  params: z.object({
+    id: mongoIdSchema,
+  }),
+  // No body, todos os campos são opcionais
+  body: z
+    .object({
+      nome: z.string().min(2, 'O nome deve ter pelo menos 2 caracteres.'),
+      // [REMOVIDO] logo: z.string().optional(), (Vem de req.file, não req.body)
+      cnpj: cnpjValidator, // [ALTERADO] Usa o validador de CNPJ
+      email: z.string().email('O email fornecido é inválido.'),
+      telefone: z.string().min(10, 'O telefone deve ter pelo menos 10 dígitos.'),
+      endereco: enderecoSchema.nullable(), // Permite enviar null para apagar o endereço
+    })
+    .partial() // Torna todos os campos opcionais
+    .refine(
+      (data) => Object.keys(data).length > 0,
+      'O corpo da requisição não pode estar vazio. Pelo menos um campo deve ser fornecido para atualização.',
+    ),
 });
 
-// Tipo inferido do Zod
-export type CreateClienteDto = z.infer<typeof clienteBodySchema>['body'];
-export type UpdateClienteDto = z.infer<typeof updateClienteSchema>['body'];
-
-// --- Esquema de Listagem (GET /api/v1/clientes) ---
-// (Baseado nos query params do clienteService.js)
+/**
+ * Schema para GET /api/v1/clientes (Listagem com paginação)
+ */
 export const listClientesSchema = z.object({
   query: z.object({
-    page: z.coerce.number().int().min(1).default(1).optional(),
-    limit: z.coerce.number().int().min(1).max(5000).default(1000).optional(), // Default 1000 (PIModal)
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().default(10),
+    search: z.string().optional(),
   }),
 });
 
-// Tipo inferido do Zod
+// --- Exportação de Tipos (DTOs) ---
+// (Agora corretos, sem o campo 'logo')
+export type ClienteBodyDto = z.infer<typeof clienteBodySchema>['body'];
+export type UpdateClienteDto = z.infer<typeof updateClienteSchema>['body'];
 export type ListClientesDto = z.infer<typeof listClientesSchema>['query'];

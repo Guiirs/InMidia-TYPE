@@ -1,3 +1,17 @@
+/*
+ * Arquivo: src/config/index.ts
+ * Descrição:
+ * Define e valida as variáveis de ambiente da aplicação usando Zod.
+ *
+ * Alterações (Melhoria de Segurança #3):
+ * 1. [Segurança] Adicionada a variável `BCRYPT_SALT_ROUNDS` ao Zod schema.
+ * Isso move o custo de hash (salt rounds) do bcrypt de um valor
+ * "hardcoded" (fixo no código) para uma variável de ambiente configurável.
+ * 2. [Configurabilidade] O valor padrão é 10 (para manter a compatibilidade original),
+ * mas agora pode ser facilmente aumentado em produção (ex: 12) via .env,
+ * sem necessidade de alterar o código-fonte.
+ */
+
 import 'dotenv/config'; // Carrega as variáveis de .env para process.env
 import { z } from 'zod';
 
@@ -15,9 +29,18 @@ const envSchema = z.object({
   // Banco de Dados
   MONGODB_URI: z.string().url('MONGODB_URI deve ser uma URL de conexão válida'),
 
-  // Autenticação
-  JWT_SECRET: z.string().min(32, 'JWT_SECRET deve ter pelo menos 32 caracteres'),
+  // --- Autenticação (Migrado para RS256) ---
+  JWT_PRIVATE_KEY: z
+    .string()
+    .min(1, 'JWT_PRIVATE_KEY (chave privada PEM) é obrigatória.'),
+  JWT_PUBLIC_KEY: z
+    .string()
+    .min(1, 'JWT_PUBLIC_KEY (chave pública PEM) é obrigatória.'),
   JWT_EXPIRES_IN: z.string().default('1d'),
+
+  // [NOVO] Custo do hash (Salt Rounds) para Bcrypt
+  BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(4).max(31).default(10),
+  // --- Fim da Autenticação ---
 
   // CORS
   FRONTEND_URL: z
@@ -26,7 +49,6 @@ const envSchema = z.object({
     .default('http://localhost:5173'),
 
   // Armazenamento (Cloudflare R2 / S3)
-  // Opcional em dev/test, mas obrigatório em produção.
   R2_ENDPOINT: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
@@ -77,3 +99,5 @@ if (
   );
   process.exit(1);
 }
+
+// Validação específica para R2 em testes

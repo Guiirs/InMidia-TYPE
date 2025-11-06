@@ -1,11 +1,26 @@
+/*
+ * Arquivo: src/api/routes/src/regiao.routes.ts
+ * Descrição: Define as rotas de gestão de Regiões (ex: /api/v1/regioes/...).
+ * (Migração de routes/regiaoRoutes.js)
+ *
+ * Alterações (Melhoria de Robustez):
+ * 1. [REMOVIDO] Removida a importação de `authMiddleware`.
+ * 2. [REMOVIDO] Removida a importação de `adminMiddleware`.
+ * 3. [REMOVIDO] Removido o `router.use(authMiddleware)` e `router.use(adminMiddleware)`.
+ *
+ * Motivo: Estes middlewares agora são aplicados globalmente a este
+ * grupo de rotas no ficheiro `src/api/routes/index.ts`, centralizando
+ * a segurança e limpando os ficheiros de rotas individuais.
+ */
+
 import { Router } from 'express';
 import { regiaoController } from '@/api/controllers/src/regiao.controller';
 import { logger } from '@/config/logger';
 
 // Middlewares
-import { authMiddleware } from '@/security/middlewares/auth.middleware';
-import { adminMiddleware } from '@/security/middlewares/admin.middleware'; // (Regiões são gestão de Admin)
-import { validate } from '@/security/middlewares/validate.middleware';
+// [REMOVIDO] import { authMiddleware } from '@/security/middlewares/auth.middleware';
+// [REMOVIDO] import { adminMiddleware } from '@/security/middlewares/admin.middleware';
+import { validate } from '@/security/middlewares/src/validate.middleware';
 
 // Validadores Zod (DTOs)
 import {
@@ -14,27 +29,19 @@ import {
 } from '@/utils/validators/regiao.validator';
 import { mongoIdParamSchema } from '@/utils/validators/admin.validator';
 
-/**
- * Define as rotas de gestão de Regiões (ex: /api/v1/regioes/...).
- * (Migração de routes/regiaoRoutes.js)
- */
-
 const router = Router();
 
 logger.info('[Routes] Definindo rotas de Regiões (/regioes)...');
 
 // --- Middlewares Aplicados a Todas as Rotas /regioes ---
-// (Lógica do JS original)
-router.use(authMiddleware);
-// (Nota: A gestão de regiões é tipicamente uma tarefa de Admin,
-// vamos adicionar o adminMiddleware para maior segurança)
-router.use(adminMiddleware);
+// [REMOVIDO] router.use(authMiddleware);
+// [REMOVIDO] router.use(adminMiddleware);
+// (A segurança é aplicada em src/api/routes/index.ts)
 
 /**
  * @route   GET /api/v1/regioes
  * @desc    Lista todas as regiões
  * @access  Privado (Admin)
- * (Migração de)
  */
 router.get(
   '/',
@@ -45,7 +52,6 @@ router.get(
  * @route   POST /api/v1/regioes
  * @desc    Cria uma nova região
  * @access  Privado (Admin)
- * (Migração de)
  */
 router.post(
   '/',
@@ -57,7 +63,6 @@ router.post(
  * @route   PUT /api/v1/regioes/:id
  * @desc    Atualiza o nome de uma região
  * @access  Privado (Admin)
- * (Migração de)
  */
 router.put(
   '/:id',
@@ -69,7 +74,6 @@ router.put(
  * @route   DELETE /api/v1/regioes/:id
  * @desc    Apaga uma região
  * @access  Privado (Admin)
- * (Migração de)
  */
 router.delete(
   '/:id',

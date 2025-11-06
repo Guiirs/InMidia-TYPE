@@ -1,19 +1,50 @@
+/*
+ * Arquivo: src/api/services/src/empresa.service.ts
+ * Descrição: Serviço para a lógica de negócios da Entidade Empresa.
+ *
+ * Alterações (Correção de Bug TS2339):
+ * 1. [FIX] Adicionado o método `findEmpresaById(empresaId)`.
+ * 2. Este método é necessário para o `empresa.controller.ts`
+ * (que é chamado pela rota GET /api/v1/empresa/details),
+ * mas não existia neste ficheiro de serviço.
+ */
+
 import { logger } from '@/config/logger';
 import {
   empresaRepository,
   EmpresaRepository,
 } from '@/db/repositories/empresa.repository';
 import { HttpError } from '@/utils/errors/httpError';
-import { UpdateEmpresaDto } from '@/utils/validators/user.validator'; // (Reutilizando o DTO que já definimos)
+import { UpdateEmpresaDto } from '@/utils/validators/user.validator';
 import { IEmpresa } from '@/db/models/empresa.model';
 import { Types } from 'mongoose';
 
 /**
  * Serviço responsável pela lógica de negócios da Entidade Empresa.
- * (Migração de services/empresaService.js -> updateEmpresaDetails)
  */
 export class EmpresaService {
   constructor(private readonly empresaRepo: EmpresaRepository) {}
+
+  /**
+   * [NOVO - CORRIGIDO] Busca os detalhes de uma empresa pelo ID.
+   *
+   * @param empresaId - ID da empresa (vinda do token do admin)
+   * @returns Os dados da empresa.
+   */
+  async findEmpresaById(
+    empresaId: string | Types.ObjectId,
+  ): Promise<IEmpresa> {
+    logger.debug(`[EmpresaService] Buscando empresa por ID: ${empresaId}`);
+
+    const empresa = await this.empresaRepo.findById(empresaId);
+
+    if (!empresa) {
+      throw new HttpError('Empresa não encontrada.', 404);
+    }
+
+    // .toJSON() remove campos sensíveis (api_key_hash)
+    return empresa.toJSON();
+  }
 
   /**
    * Atualiza os detalhes da empresa (nome, cnpj, endereço).
@@ -30,10 +61,6 @@ export class EmpresaService {
     logger.info(
       `[EmpresaService] Admin (Empresa: ${empresaId}) requisitou updateEmpresaDetails.`,
     );
-
-    // O DTO (UpdateEmpresaDto) já foi validado (pelo Zod)
-    // para não permitir campos sensíveis (como api_key_hash).
-    // A lógica de remoção de campos sensíveis (JS) é agora garantida pelo DTO.
 
     try {
       const empresaAtualizada = await this.empresaRepo.findByIdAndUpdate(

@@ -3,20 +3,21 @@
  * Descrição:
  * Este arquivo isola a lógica de hashing e comparação de senhas usando 'bcrypt'.
  *
- * Alterações:
- * 1. [Clean Code] O código original já estava limpo e bem tipado.
- * 2. [Segurança] O `saltRounds` foi mantido como 10, conforme o original.
- * (Nota: Para novos projetos, 12 seria uma escolha mais moderna, mas
- * manter 10 garante compatibilidade com senhas existentes).
- * 3. Nenhuma correção de tipagem foi necessária.
+ * Alterações (Melhoria de Segurança #3):
+ * 1. [Segurança] Removido o `saltRounds = 10` "hardcoded" (valor fixo no código).
+ * 2. [Configurabilidade] Importado o objeto `config` (de `src/config/index.ts`).
+ * 3. [Segurança] A constante `saltRounds` agora usa `config.BCRYPT_SALT_ROUNDS`.
+ * Isso permite que o custo do hash (ex: 10, 11, 12) seja facilmente ajustado
+ * no ficheiro .env em ambientes de produção, sem alterar o código.
  */
 
 import bcrypt from 'bcrypt';
+// [NOVO] Importa a configuração centralizada
+import { config } from '@/config/index';
 
-// Custo do hash (replicando o original)
-// Um valor maior (como 12) é mais seguro, mas mais lento.
-// Mantido em 10 para consistência com o projeto original.
-const saltRounds = 10;
+// [ALTERADO] O custo do hash agora é lido da configuração centralizada.
+// O padrão (definido no config.ts) é 10, mantendo a compatibilidade original.
+const saltRounds = config.BCRYPT_SALT_ROUNDS;
 
 /**
  * Gera um hash de uma senha em texto plano.

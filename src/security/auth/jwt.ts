@@ -1,22 +1,20 @@
 /*
  * Arquivo: src/security/auth/jwt.ts
  * Descrição:
- * Este arquivo centraliza a lógica de assinatura e verificação de JSON Web Tokens (JWT).
+ * Lógica de assinatura (RS256) e verificação (RS256) de JSON Web Tokens.
  *
- * Alterações:
- * 1. [FIX] Corrigida a tipagem da interface `IJwtSignPayload` para os dados de entrada
- * da função `signJwt`.
- * 2. [FIX] Corrigida a tipagem da interface `IJwtPayload` (payload decodificado)
- * para ser uma interseção de `IJwtSignPayload` e `jwt.JwtPayload`.
- * 3. [FIX] Resolvido o erro TS2322 (No overload matches this call) na função `signJwt`.
- * Usamos `as any` na propriedade `expiresIn`, pois `config.JWT_EXPIRES_IN`
- * é do tipo `string`, mas `@types/jsonwebtoken` espera um tipo "marcado"
- * (ms.StringValue) ou `number`. O valor ("1d") é válido em tempo de execução.
- * 4. [Segurança/Tipagem] A função `verifyJwt` valida que o payload decodificado
- * é um objeto e contém os campos essenciais (id, empresaId).
+ * Alterações (Melhoria de Segurança #2):
+ * 1. [Segurança] Migrado de HS256 para RS256 (chaves assimétricas).
+ * 2. [signJwt] Usa `config.JWT_PRIVATE_KEY` e `algorithm: 'RS256'`.
+ * 3. [verifyJwt] Usa `config.JWT_PUBLIC_KEY` e `algorithms: ['RS256']`.
+ * 4. [FIX] Resolvido o erro TS2339 (Property does not exist) na função `verifyJwt`.
+ * Substituímos o acesso direto (`!decoded.id`) por verificações
+ * de 'type guard' (`!('id' in decoded)`). Isso prova ao TypeScript que as
+ * propriedades customizadas existem no objeto 'decoded' antes de retorná-lo
+ * como `IJwtPayload`.
  */
 
-import jwt, { JwtPayload, SignOptions } from 'jsonwebtoken';
+import jwt, { JwtPayload, SignOptions, VerifyOptions } from 'jsonwebtoken';
 import { Types } from 'mongoose';
 import { config } from '@/config/index';
 
@@ -37,26 +35,26 @@ export interface IJwtSignPayload {
 export interface IJwtPayload extends IJwtSignPayload, JwtPayload {}
 
 /**
- * Assina um novo token JWT.
+ * Assina um novo token JWT usando RS256.
  *
  * @param payload - O objeto de payload (dados do usuário) a ser incluído no token.
  * @returns O token JWT assinado como uma string.
  */
 export const signJwt = (payload: IJwtSignPayload): string => {
-  // Define as opções, incluindo o tempo de expiração
+  // Define as opções, incluindo o tempo de expiração e o algoritmo
   const options: SignOptions = {
-    // [FIX] Usamos 'as any' para contornar o erro de tipagem TS2322.
-    // O config.JWT_EXPIRES_IN ('1d') é uma string válida para a biblioteca 'ms',
-    // mas o TypeScript não consegue inferir isso.
+    // [FIX] Mantém 'as any' para contornar o erro de tipagem TS2322
     expiresIn: config.JWT_EXPIRES_IN as any,
+    // [ALTERADO] Define o algoritmo como RS256
+    algorithm: 'RS256',
   };
 
-  // A validação do config.JWT_SECRET é garantida pelo config/index.ts no boot
-  return jwt.sign(payload, config.JWT_SECRET, options);
+  // [ALTERADO] Usa a CHAVE PRIVADA para assinar
+  return jwt.sign(payload, config.JWT_PRIVATE_KEY, options);
 };
 
 /**
- * Verifica e decodifica um token JWT.
+ * Verifica e decodifica um token JWT usando RS256.
  *
  * @param token - A string do token JWT a ser verificada.
  * @returns O payload decodificado (IJwtPayload) se o token for válido.
@@ -64,21 +62,28 @@ export const signJwt = (payload: IJwtSignPayload): string => {
  * for inválido, expirado ou malformado.
  */
 export const verifyJwt = (token: string): IJwtPayload => {
-  // A validação do config.JWT_SECRET é garantida pelo config/index.ts no boot
-  try {
-    const decoded = jwt.verify(token, config.JWT_SECRET);
+  // [NOVO] Define as opções de verificação, exigindo RS256
+  const options: VerifyOptions = {
+    algorithms: ['RS256'], // Exige o algoritmo correto
+  };
 
-    // Validação de tipo para garantir que o payload é um objeto
-    // e não uma string, e que contém os campos esperados.
+  try {
+    // [ALTERADO] Usa a CHAVE PÚBLICA e as opções de verificação
+    const decoded = jwt.verify(token, config.JWT_PUBLIC_KEY, options);
+
+    // [FIX - TS2339] Validação de tipo e 'Type Guard'
+    // Precisamos verificar se o objeto 'decoded' (que é JwtPayload | Jwt)
+    // realmente contém as propriedades customizadas que esperamos.
     if (
-      typeof decoded === 'string' ||
-      !decoded.id ||
-      !decoded.empresaId ||
-      !decoded.role
+      typeof decoded === 'string' || // Verifica se não é uma string
+      !('id' in decoded) || // Verifica se a propriedade 'id' existe
+      !('empresaId' in decoded) || // Verifica se a propriedade 'empresaId' existe
+      !('role' in decoded) // Verifica se a propriedade 'role' existe
     ) {
       throw new jwt.JsonWebTokenError('Payload do token inválido ou malformado.');
     }
 
+    // Agora o TypeScript sabe que 'decoded' tem 'id', 'empresaId' e 'role'
     return decoded as IJwtPayload;
   } catch (err) {
     // O erro será capturado pelo auth.middleware (que o passará para o errorHandler)

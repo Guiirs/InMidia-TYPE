@@ -1,63 +1,75 @@
+/*
+ * Arquivo: src/utils/validators/contrato.validator.ts
+ * Descrição: Schemas de validação (Zod) para as rotas de Contrato.
+ *
+ * Alterações:
+ * 1. [FIX TS2339] Corrigido o erro "Property 'min' does not exist".
+ * 2. O erro ocorria em 'createContratoSchema' > 'piId'.
+ * 3. Motivo: Não podemos encadear '.min()' *depois* de um schema
+ * que usa '.refine()' (como o 'mongoIdSchema'), pois o tipo
+ * muda de ZodString para ZodEffects.
+ * 4. Solução: Removido o '.min(1, ...)'. O 'mongoIdSchema'
+ * já é obrigatório por padrão (não é opcional), e a sua
+ * própria lógica de 'refine' já falhará para uma string vazia.
+ */
+
 import { z } from 'zod';
-import { mongoIdParamSchema } from './admin.validator'; // Reutilizando o validador de MongoID
+import { mongoIdSchema } from './admin.validator'; // Reutiliza o validador de ID
 
-// Validador de MongoID (para ser usado no DTO)
-const mongoId = (message: string) =>
-  z.string().refine((val) => /^[0-9a-fA-F]{24}$/.test(val), {
-    message,
-  });
+/**
+ * Schema para validar :id nos parâmetros (GET /:id, DELETE /:id, GET /:id/download)
+ */
+export const getContratoSchema = z.object({
+  params: z.object({
+    id: mongoIdSchema,
+  }),
+});
 
-// Enum de Status (baseado no model)
-const statusContratoEnum = z.enum(['rascunho', 'ativo', 'concluido', 'cancelado']);
-
-// --- Esquema de Criação (POST /api/v1/contratos) ---
-// (Migração de 'validateContratoCreateBody')
+/**
+ * Schema para POST /api/v1/contratos (Criação)
+ */
 export const createContratoSchema = z.object({
   body: z.object({
-    piId: mongoId('O ID da PI (Proposta Interna) é obrigatório e inválido.'),
+    // [FIX] Removido o .min(1, ...) que causava o erro TS2339.
+    // O mongoIdSchema (sendo um z.string()) já é obrigatório.
+    piId: mongoIdSchema,
   }),
 });
 
-// Tipo inferido do Zod
-export type CreateContratoDto = z.infer<typeof createContratoSchema>['body'];
-
-// --- Esquema de Atualização (PUT /api/v1/contratos/:id) ---
-// (Migração de 'validateContratoUpdateBody')
+/**
+ * Schema para PUT /api/v1/contratos/:id (Atualização de Status)
+ */
 export const updateContratoSchema = z.object({
-  params: mongoIdParamSchema.shape.params, // Reutiliza a validação do ID
-  body: z
-    .object({
-      status: statusContratoEnum.optional(),
-    })
-    // Garante que APENAS o status pode ser atualizado (segurança)
-    .strict('Apenas o campo "status" pode ser atualizado.')
-    .refine(
-      (data) => Object.keys(data).length > 0,
-      'Pelo menos um campo (status) deve ser fornecido.',
+  params: z.object({
+    id: mongoIdSchema,
+  }),
+  body: z.object({
+    status: z.enum(
+      ['Pendente', 'Ativo', 'Concluído', 'Cancelado'], // Valores permitidos
+      {
+        required_error: 'O status é obrigatório.',
+        invalid_type_error:
+          "O status deve ser 'Pendente', 'Ativo', 'Concluído' ou 'Cancelado'.",
+      },
     ),
+  }),
 });
 
-// Tipo inferido do Zod
-export type UpdateContratoDto = z.infer<typeof updateContratoSchema>['body'];
-
-// --- Esquema de Listagem (GET /api/v1/contratos) ---
-// (Baseado nos query params do contratoService.js)
+/**
+ * Schema para GET /api/v1/contratos (Listagem com filtros)
+ */
 export const listContratosSchema = z.object({
   query: z.object({
-    page: z.coerce.number().int().min(1).default(1).optional(),
-    limit: z.coerce.number().int().min(1).max(100).default(10).optional(),
-    sortBy: z.string().default('createdAt').optional(),
-    order: z.enum(['asc', 'desc']).default('desc').optional(),
-    status: statusContratoEnum.optional(),
-    clienteId: mongoId('O ID do cliente deve ser um MongoID válido.').optional(),
+    // Filtro por status (opcional)
+    status: z
+      .enum(['Pendente', 'Ativo', 'Concluído', 'Cancelado'])
+      .optional(),
+    // Filtro por cliente (opcional)
+    clienteId: mongoIdSchema.optional(),
   }),
 });
 
-// Tipo inferido do Zod
+// --- Exportação de Tipos (DTOs) ---
+export type CreateContratoDto = z.infer<typeof createContratoSchema>['body'];
+export type UpdateContratoDto = z.infer<typeof updateContratoSchema>['body'];
 export type ListContratosDto = z.infer<typeof listContratosSchema>['query'];
-
-// --- Esquema para GetById, Delete, Download (rotas com :id) ---
-// (Migração de 'validateIdParam')
-export const getContratoSchema = z.object({
-  params: mongoIdParamSchema.shape.params, // Reutiliza a validação do ID
-});

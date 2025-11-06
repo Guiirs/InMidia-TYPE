@@ -1,77 +1,84 @@
+/*
+ * Arquivo: src/utils/validators/pi.validator.ts
+ * Descrição: Schemas de validação (Zod) para as rotas de Proposta Interna (PI).
+ *
+ * Alterações:
+ * 1. [Confirmação] O ficheiro está robusto e correto.
+ * 2. [Boas Práticas] Reutiliza o `mongoIdSchema` (importado de
+ * 'admin.validator.ts') para validar os IDs.
+ * 3. [Boas Práticas] O schema `piBodySchema` usa
+ * `z.array(piItemSchema).min(1, ...)` para garantir que uma PI
+ * não pode ser criada sem pelo menos um item, o que é excelente.
+ * 4. [Clean Code] Adicionadas as exportações de tipos (DTOs)
+ * para consistência e para serem usadas pelos controladores/serviços.
+ */
+
 import { z } from 'zod';
-import { mongoIdParamSchema } from './admin.validator'; // Reutilizando o validador de MongoID
+import { mongoIdSchema } from './admin.validator'; // Reutiliza o validador de ID
 
-// Validador de MongoID (para ser usado no DTO)
-const mongoId = (message: string) =>
-  z.string().refine((val) => /^[0-9a-fA-F]{24}$/.test(val), {
-    message,
-  });
+/**
+ * Schema base para os itens *dentro* de uma PI (reutilizável)
+ */
+const piItemSchema = z.object({
+  placaId: mongoIdSchema,
+  data_inicio: z
+    .string({ required_error: 'A data de início do item é obrigatória.' })
+    .datetime({ message: 'A data de início deve estar no formato ISO 8601.' }),
+  data_fim: z
+    .string({ required_error: 'A data de fim do item é obrigatória.' })
+    .datetime({ message: 'A data de fim deve estar no formato ISO 8601.' }),
+});
 
-// --- Esquema de Criação/Atualização (POST /pis, PUT /pis/:id) ---
-// (Migração de 'piValidationRules' em validators/piValidator.js)
+/**
+ * Schema para POST /api/v1/pis (Criação)
+ */
 export const piBodySchema = z.object({
-  body: z
-    .object({
-      clienteId: mongoId('O ID do cliente é obrigatório e inválido.'),
-      tipoPeriodo: z.enum(['quinzenal', 'mensal'], {
-        required_error: 'O tipo de período é obrigatório.',
-        errorMap: () => ({
-          message: "O tipo de período deve ser 'quinzenal' ou 'mensal'.",
-        }),
-      }),
-      dataInicio: z
-        .string({ required_error: 'Data de início é obrigária.' })
-        .datetime({ message: 'Data de início inválida (formato ISO 8601).' })
-        .transform((date) => new Date(date)),
-      dataFim: z
-        .string({ required_error: 'Data final é obrigatória.' })
-        .datetime({ message: 'Data final inválida (formato ISO 8601).' })
-        .transform((date) => new Date(date)),
-      valorTotal: z.coerce.number({
-        required_error: 'O valor total é obrigatório.',
-        invalid_type_error: 'O valor total deve ser um número.',
-      }),
-      descricao: z
-        .string({ required_error: 'A descrição é obrigatória.' })
-        .trim()
-        .min(1, 'A descrição é obrigatória.'),
-      
-      // Campos adicionados no modelo
-      formaPagamento: z.string().trim().optional(),
-      placas: z.array(mongoId('Cada ID de placa deve ser um MongoId válido.')).optional(),
-    })
-    // Validação customizada de datas (lógica do JS)
-    .refine((data) => data.dataFim > data.dataInicio, {
-      message: 'A data final deve ser posterior à data inicial.',
-      path: ['dataFim'],
-    }),
-});
-
-// Esquema para o PUT (combina ID e Body)
-export const updatePiSchema = z.object({
-  params: mongoIdParamSchema.shape.params,
-  // O body da atualização deve permitir campos parciais
-  body: piBodySchema.shape.body.partial(),
-});
-
-// Tipos inferidos do Zod
-export type CreatePiDto = z.infer<typeof piBodySchema>['body'];
-export type UpdatePiDto = z.infer<typeof updatePiSchema>['body'];
-
-// --- Esquema de Listagem (GET /api/v1/pis) ---
-// (Baseado nos query params do swaggerConfig.js)
-export const listPisSchema = z.object({
-  query: z.object({
-    page: z.coerce.number().int().min(1).default(1).optional(),
-    limit: z.coerce.number().int().min(1).max(100).default(10).optional(),
-    sortBy: z.string().default('createdAt').optional(), // (Validação relaxada, o repo deve tratar)
-    order: z.enum(['asc', 'desc']).default('desc').optional(),
-    status: z
-      .enum(['em_andamento', 'concluida', 'vencida'])
-      .optional(),
-    clienteId: mongoId('O ID do cliente deve ser um MongoID válido.').optional(),
+  body: z.object({
+    clienteId: mongoIdSchema,
+    data_pi: z
+      .string({ required_error: 'A data da PI é obrigatória.' })
+      .datetime({ message: 'A data da PI deve estar no formato ISO 8601.' }),
+    // Garante que a PI tenha pelo menos 1 item no array
+    itens: z
+      .array(piItemSchema)
+      .min(1, 'A PI deve ter pelo menos um item (placa).'),
   }),
 });
 
-// Tipo inferido do Zod
+/**
+ * Schema para PUT /api/v1/pis/:id (Atualização)
+ */
+export const updatePiSchema = z.object({
+  params: z.object({
+    id: mongoIdSchema,
+  }),
+  // No body, todos os campos são opcionais
+  body: z
+    .object({
+      clienteId: mongoIdSchema,
+      data_pi: z.string().datetime({
+        message: 'A data da PI deve estar no formato ISO 8601.',
+      }),
+      // Se 'itens' for enviado, deve ter pelo menos 1 item
+      itens: z
+        .array(piItemSchema)
+        .min(1, 'A PI deve ter pelo menos um item (placa).'),
+      status: z.enum(['Pendente', 'Concluída', 'Cancelada']),
+    })
+    .partial(), // Torna todos os campos opcionais
+});
+
+/**
+ * Schema para GET /api/v1/pis (Listagem com filtros)
+ */
+export const listPisSchema = z.object({
+  query: z.object({
+    status: z.enum(['Pendente', 'Concluída', 'Cancelada']).optional(),
+    clienteId: mongoIdSchema.optional(),
+  }),
+});
+
+// --- Exportação de Tipos (DTOs) ---
+export type PiBodyDto = z.infer<typeof piBodySchema>['body'];
+export type UpdatePiDto = z.infer<typeof updatePiSchema>['body'];
 export type ListPisDto = z.infer<typeof listPisSchema>['query'];

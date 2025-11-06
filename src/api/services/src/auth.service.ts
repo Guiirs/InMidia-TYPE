@@ -1,10 +1,19 @@
+/*
+ * Arquivo: src/api/services/src/auth.service.ts
+ * Descrição:
+ * Serviço responsável pela lógica de negócios de autenticação e registo.
+ *
+ * Alterações (Melhoria de Arquitetura):
+ * 1. [NOVO] Adicionadas importações de `IEmpresa` e `comparePassword`.
+ * 2. [NOVO] Adicionado o método `validateApiKey(apiKey: string)`.
+ * Esta lógica foi movida do `apiKey.middleware.ts` para este serviço,
+ * desacoplando o middleware da camada de dados (repositório) e
+ * centralizando a lógica de autenticação.
+ */
+
 import mongoose from 'mongoose';
 import { logger } from '@/config/logger';
-import {
-  IUserDocument,
-  IEmpresaDocument,
-  IUser,
-} from '@/db/models/user.model';
+import { IUserDocument, IEmpresaDocument, IUser } from '@/db/models/user.model';
 import {
   userRepository,
   UserRepository,
@@ -15,12 +24,12 @@ import {
 } from '@/db/repositories/empresa.repository';
 import { HttpError } from '@/utils/errors/httpError';
 import {
-  comparePassword,
+  comparePassword, // [NOVO] Importado para validação da API Key
   hashPassword,
   signJwt,
-} from '@/security/index';
+} from '@/security/middlewares/src/index';
 import { LoginDto, RegisterEmpresaDto } from '@/utils/validators/auth.validator';
-import { IEmpresa } from '@/db/models/empresa.model';
+import { IEmpresa } from '@/db/models/empresa.model'; // [NOVO] Importado para o tipo de retorno
 
 /**
  * Serviço responsável pela lógica de negócios de autenticação e registo.
@@ -35,34 +44,33 @@ export class AuthService {
   /**
    * Tenta autenticar um utilizador.
    * (Migração de services/authService.js -> login)
-   *
-   * @param loginDto - O DTO (Data Transfer Object) contendo email/username e password.
-   * @returns Um objeto contendo o token JWT e os dados do utilizador.
    */
   async login(loginDto: LoginDto): Promise<{ token: string; user: IUser }> {
     const { email, password } = loginDto;
-    
+
     // 1. Encontra o utilizador (já inclui a senha e a empresa)
-    // Usamos o 'email' do DTO para ambos os campos
     const user = await this.userRepo.findByEmailOrUsernameWithPassword(
       email.toLowerCase(),
     );
 
     // 2. Verifica se o utilizador existe e se a senha está correta
     if (!user || !user.password) {
-      logger.warn(`[AuthService] Tentativa de login falhada (user não encontrado): ${email}`);
+      logger.warn(
+        `[AuthService] Tentativa de login falhada (user não encontrado): ${email}`,
+      );
       throw new HttpError('Credenciais inválidas.', 401);
     }
 
     const isMatch = await comparePassword(password, user.password);
 
     if (!isMatch) {
-      logger.warn(`[AuthService] Tentativa de login falhada (senha incorreta): ${email}`);
+      logger.warn(
+        `[AuthService] Tentativa de login falhada (senha incorreta): ${email}`,
+      );
       throw new HttpError('Credenciais inválidas.', 401);
     }
 
     // 3. Prepara os dados para o token (Payload)
-    // O 'user.toJSON()' aplica a transformação _id -> id
     const userJson = user.toJSON();
 
     const payload = {
@@ -76,17 +84,12 @@ export class AuthService {
     const token = signJwt(payload);
 
     // 5. Retorna o token e os dados do utilizador (sem a senha)
-    // O 'userJson' já vem sem a senha devido ao 'select: false' no modelo
-    // e ao 'select' explícito no repositório.
     return { token, user: userJson };
   }
 
   /**
    * Regista uma nova Empresa e o seu primeiro Utilizador Admin.
    * (Migração de services/empresaService.js -> registerEmpresa)
-   *
-   * @param registerDto - O DTO contendo dados da empresa e do admin.
-   * @returns A empresa e o utilizador criados (sem dados sensíveis).
    */
   async registerEmpresa(
     registerDto: RegisterEmpresaDto,
@@ -119,8 +122,16 @@ export class AuthService {
       const novoUser = await this.userRepo.create(userData, session);
 
       // 3. Adicionar o utilizador à lista da empresa
-      novaEmpresa.usuarios.push(novoUser._id);
-      await this.empresaRepo.save(novaEmpresa, session);
+      // (Nota: O modelo JS original tinha 'usuarios', o TS tem 'usuarios')
+      // (O modelo TS de Empresa precisa ter o campo 'usuarios: [Types.ObjectId]')
+      if (novaEmpresa.usuarios) {
+        novaEmpresa.usuarios.push(novoUser._id);
+        await this.empresaRepo.save(novaEmpresa, session);
+      } else {
+        logger.warn(
+          `[AuthService] Modelo Empresa (ID: ${novaEmpresa.id}) não possui o campo 'usuarios' inicializado.`,
+        );
+      }
 
       // 4. Cometer a transação
       await session.commitTransaction();
@@ -150,12 +161,63 @@ export class AuthService {
           409,
         );
       }
-      
+
       logger.error(error, '[AuthService] Erro ao registar empresa');
       throw new HttpError('Erro interno ao registar a empresa.', 500);
     } finally {
       session.endSession();
     }
+  }
+
+  /**
+   * [NOVO] Valida uma API Key (prefixo_segredo)
+   * Lógica movida do apiKey.middleware para o AuthService para desacoplamento.
+   *
+   * @param apiKey - A chave completa (prefix_secret) vinda do header.
+   * @returns O documento da empresa (JSON) se a chave for válida.
+   * @throws {HttpError} Se a chave for malformada, inválida ou não corresponder.
+   */
+  async validateApiKey(apiKey: string): Promise<IEmpresa> {
+    // 1. Separa prefixo e segredo (prefix_secret)
+    const parts = apiKey.split('_');
+    if (parts.length < 2) {
+      logger.warn('[AuthService-APIKey] Validação falhou: Chave mal formatada.');
+      throw new HttpError('Chave de API mal formatada.', 403);
+    }
+
+    const apiKeySecret = parts.pop(); // A última parte é o segredo
+    const apiKeyPrefix = parts.join('_'); // O resto é o prefixo
+
+    if (!apiKeySecret || !apiKeyPrefix) {
+      logger.warn('[AuthService-APIKey] Validação falhou: Formato de chave inválido.');
+      throw new HttpError('Chave de API mal formatada.', 403);
+    }
+
+    // 2. Busca a empresa pelo PREFIXO (usando o repositório)
+    const empresa = await this.empresaRepo.findByApiKeyPrefix(apiKeyPrefix);
+
+    if (!empresa || !empresa.api_key_hash) {
+      logger.warn(
+        `[AuthService-APIKey] Validação falhou: Prefixo '${apiKeyPrefix}' não encontrado ou empresa sem hash.`,
+      );
+      throw new HttpError('Chave de API inválida.', 403);
+    }
+
+    // 3. Compara o SEGREDO com o HASH
+    const match = await comparePassword(apiKeySecret, empresa.api_key_hash);
+
+    if (!match) {
+      logger.warn(
+        `[AuthService-APIKey] Validação falhou: Segredo incorreto para o prefixo '${apiKeyPrefix}'.`,
+      );
+      throw new HttpError('Chave de API inválida.', 403);
+    }
+
+    // 4. Sucesso! Retorna os dados da empresa (sem campos sensíveis)
+    logger.info(
+      `[AuthService-APIKey] API Key validada com sucesso para empresa: ${empresa.nome} (ID: ${empresa.id}).`,
+    );
+    return empresa.toJSON();
   }
 
   // (Os métodos forgotPassword e resetPassword serão adicionados aqui posteriormente)
