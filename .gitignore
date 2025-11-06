@@ -1,4 +1,8 @@
-# Logs
+# Pasta de build e arquivos gerados (TypeScript)
+/dist
+/build
+
+# Logs (existentes no original)
 logs
 *.log
 npm-debug.log*
@@ -7,24 +11,27 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Node modules
-node_modules
+# Módulos e dependências (existentes no original)
+/node_modules
 
-# Arquivos de ambiente - NUNCA ENVIE SUAS SENHAS/CHAVES!
+# Arquivos de ambiente - NUNCA ENVIE SUAS SENHAS/CHAVES! (existentes no original)
 .env
 .env.*
 !.env.example
 
-# Arquivos do sistema operacional
-.DS_Store
-Thumbs.db
-
-# Diretório de build (se aplicável)
-dist
-build
-
-# Bancos de dados locais (SQLite, etc.)
+# Bancos de dados e Backups (existentes no original e novos)
 *.db3 
 db/database/*.db3
-
 /backups
+coverage/         # Pasta de cobertura de testes (Jest/ts-jest)
+
+# Ficheiros do Jest/Testes
+.jest/
+.tmp/
+jest.config.*.js # Se usar configs por ficheiro
+# O MongoDB Memory Server cria/usa um diretório temporário, mas tipicamente
+# está dentro da pasta de testes ou temporários do sistema.
+
+# Ficheiros do sistema operacional (existentes no original)
+.DS_Store
+Thumbs.db
