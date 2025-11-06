@@ -1,3 +1,23 @@
+/*
+ * Arquivo: src/security/middlewares/validate.middleware.ts
+ * Descrição:
+ * Este middleware de alta ordem (Higher-Order Middleware) integra o Zod
+ * ao fluxo do Express. Ele recebe um schema Zod e valida o `req.body`,
+ * `req.query` e `req.params`.
+ *
+ * Alterações:
+ * 1. [FIX] Corrigida a chamada `logger.warn` para resolver o erro TS2769.
+ * O objeto de erro (`error.flatten()`) agora é passado como o *primeiro*
+ * argumento, e a mensagem de string como o *segundo*,
+ * conforme a assinatura do Pino: `logger.warn(objeto, mensagem)`.
+ * 2. [Clean Code] A função `formatZodError` foi ajustada para usar `slice(1)`,
+ * removendo os prefixos 'body.' ou 'params.' das chaves de erro
+ * (ex: "nome" em vez de "body.nome"), o que melhora a resposta da API.
+ * 3. [Error Handling] O restante da lógica, incluindo a criação do
+ * `HttpError` (com os parâmetros na ordem correta) e o `validationErrors`,
+ * foi mantido.
+ */
+
 import { Request, Response, NextFunction } from 'express';
 import { AnyZodObject, ZodError, ZodIssue } from 'zod';
 import { logger } from '@/config/logger';
@@ -14,8 +34,9 @@ const formatZodError = (zodError: ZodError): Record<string, string> => {
   const errors: Record<string, string> = {};
 
   zodError.issues.forEach((issue: ZodIssue) => {
-    // O 'path' é um array (ex: ['placas', 0, 'id'] ou ['nome'])
-    const field = issue.path.join('.');
+    // O 'path' é um array (ex: ['body', 'nome'] ou ['query', 'page'])
+    // Usamos .slice(1) para remover o prefixo (body, query, params)
+    const field = issue.path.slice(1).join('.');
     if (!errors[field]) {
       errors[field] = issue.message;
     }
@@ -35,7 +56,6 @@ export const validate =
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       // Tenta validar o 'body', 'params' e 'query' da requisição
-      // O 'parse' do Zod já lança um erro se a validação falhar
       await schema.parseAsync({
         body: req.body,
         query: req.query,
@@ -47,12 +67,13 @@ export const validate =
     } catch (error) {
       // Se o erro for uma instância de ZodError
       if (error instanceof ZodError) {
+        // [FIX] Corrigida a chamada do logger para: logger.warn(objeto, mensagem)
         logger.warn(
-          `[ValidateMiddleware] Erro de validação Zod na rota ${req.path}`,
-          error.flatten(),
+          { errors: error.flatten() }, // 1. O objeto de erro
+          `[ValidateMiddleware] Erro de validação Zod na rota ${req.path}`, // 2. A mensagem
         );
 
-        // Formata os erros (replicando a lógica do authValidator.js)
+        // Formata os erros para a resposta da API
         const formattedErrors = formatZodError(error);
 
         // Cria um HttpError estruturado (que o errorHandler global irá tratar)
@@ -60,7 +81,7 @@ export const validate =
           'Erro de validação nos dados enviados.',
           400, // Bad Request
         );
-        
+
         // Anexa os erros de validação detalhados ao objeto de erro
         httpError.validationErrors = formattedErrors;
 
